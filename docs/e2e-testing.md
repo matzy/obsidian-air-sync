@@ -77,6 +77,7 @@ Read from the real environment or a gitignored `.env.e2e` at the repo root (real
 | `AIRSYNC_E2E_GOOGLE_CLIENT_SECRET` | Google Drive — your GCP OAuth client secret |
 | `AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN` | Google Drive — minted by the bootstrap |
 | `AIRSYNC_E2E_CHROME_USER_DATA_DIR` | Google Picker — dedicated system-Chrome profile with the test account signed in |
+| `AIRSYNC_E2E_ELECTRON_USER_DATA_DIR` | Google Picker — dedicated Electron BrowserWindow profile with the test account signed in |
 | `AIRSYNC_E2E_DROPBOX_REFRESH_TOKEN` | Dropbox — minted by the bootstrap |
 | `AIRSYNC_E2E_ONEDRIVE_CLIENT_ID` | OneDrive — your Entra app client id (for loopback + refresh) |
 | `AIRSYNC_E2E_ONEDRIVE_REFRESH_TOKEN` | OneDrive — minted by the bootstrap |
@@ -92,8 +93,11 @@ npm run test:e2e           # all backends — the per-backend files run IN PARAL
 npm run test:e2e:google    # Google Drive only
 npm run test:e2e:dropbox   # Dropbox only
 npm run test:e2e:onedrive  # OneDrive only
-npm run test:e2e:google-picker # deployed Google Picker in installed system Chrome/Chromium
+npm run test:e2e:google-picker # deployed Google Picker in system Chrome + Electron
+npm run test:e2e:google-picker:chrome # system Chrome route only
+npm run test:e2e:google-picker:electron # Electron BrowserWindow route only
 npm run e2e:bootstrap:google-picker # one-time sign-in for the dedicated Picker Chrome profile
+npm run e2e:bootstrap:google-picker:electron # one-time sign-in for the dedicated Electron profile
 ```
 
 - `npm run test:e2e` runs the per-backend files **concurrently** (different services =
@@ -112,19 +116,28 @@ npm run e2e:bootstrap:google-picker # one-time sign-in for the dedicated Picker 
 
 ## Google Picker browser fidelity
 
-`npm run test:e2e:google-picker` is a separate opt-in T3 check. It does not run the
+`npm run test:e2e:google-picker` is a separate opt-in T3 check. It runs the same live
+Picker contract through both an installed system Chrome/Chromium and an Electron
+`BrowserWindow`. Use the `:chrome` or `:electron` suffix to isolate one engine. It does not run the
 Google Drive REST contract and is not included in `npm test`, normal CI, or
-`test:e2e:google`. It launches an installed **system Chrome/Chromium** directly, opens the
-production folder-picker URL and deployed `airsync.takezo.dev` page, and observes it over
-the Chrome DevTools Protocol. Electron and `BrowserWindow` are not imported, launched, or
-used as a fallback. This check proves only the system Chrome/Chromium path; it does not
-establish compatibility with Firefox or Zen.
+`test:e2e:google`. Both engines open the production folder-picker URL and deployed
+`airsync.takezo.dev` page and are observed over the Chrome DevTools Protocol. The system
+Chrome route does not import, launch, or fall back to Electron, so its result remains an
+independent proof of the external Chrome path. Neither route establishes compatibility
+with Firefox or Zen.
 
 The credentialed Picker needs both the OAuth token and a Google login in Chrome. Set
 `AIRSYNC_E2E_CHROME_USER_DATA_DIR` to a dedicated profile directory, then run
 `npm run e2e:bootstrap:google-picker`, sign in to the throwaway Google test account,
 confirm Google Drive opens, and close the dedicated Chrome window. Do not point this
 variable at your normal browser profile. The E2E reuses only this dedicated profile.
+
+The Electron route likewise needs its own signed-in profile. Set
+`AIRSYNC_E2E_ELECTRON_USER_DATA_DIR` to a dedicated directory, run
+`npm run e2e:bootstrap:google-picker:electron`, sign in to the same throwaway account,
+confirm Google Drive opens, and close the Electron window. The fidelity run verifies the
+engine identity from `Browser.getVersion`; a system-Chrome result cannot satisfy the
+Electron contract and an Electron result cannot satisfy the system-Chrome contract.
 
 Set `AIRSYNC_E2E_CHROME_PATH` to select an executable explicitly. Otherwise the runner
 checks standard Chrome/Chromium executable names and OS-specific install locations,

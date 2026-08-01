@@ -1,5 +1,6 @@
 const { spawn, spawnSync } = require("node:child_process");
-const { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, watch } = require("node:fs");
+const { accessSync, constants, mkdirSync, mkdtempSync, readFileSync, rmSync, watch } = require("node:fs");
+const http = require("node:http");
 const { tmpdir } = require("node:os");
 const { delimiter, join } = require("node:path");
 
@@ -197,6 +198,11 @@ function chromeIdentity(version) {
 	const product = typeof version?.product === "string" ? version.product : "";
 	const userAgent = typeof version?.userAgent === "string" ? version.userAgent : "";
 	return /(?:Chrome|Chromium)\//.test(`${product} ${userAgent}`) && !/Electron/i.test(`${product} ${userAgent}`);
+}
+
+function electronIdentity(version) {
+	const userAgent = typeof version?.userAgent === "string" ? version.userAgent : "";
+	return /Electron\//i.test(userAgent);
 }
 
 function delay(ms) {
@@ -527,6 +533,49 @@ function killProcessGroup(child) {
 	}
 }
 
+function reservePort() {
+	return new Promise((resolve, reject) => {
+		const server = http.createServer();
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address();
+			const port = typeof address === "object" && address ? address.port : 0;
+			server.close((error) => error ? reject(error) : resolve(port));
+		});
+	});
+}
+
+function readElectronEndpoint(port) {
+	return new Promise((resolve) => {
+		const request = http.get(`http://127.0.0.1:${port}/json/version`, (response) => {
+			let body = "";
+			response.on("data", (chunk) => (body += chunk));
+			response.on("end", () => {
+				try {
+					resolve(JSON.parse(body).webSocketDebuggerUrl || null);
+				} catch {
+					resolve(null);
+				}
+			});
+		});
+		request.on("error", () => resolve(null));
+		request.setTimeout(500, () => {
+			request.destroy();
+			resolve(null);
+		});
+	});
+}
+
+async function waitForElectronEndpoint(port, child, signal) {
+	while (!signal.aborted) {
+		if (child.exitCode !== null) throw new PickerChromeError("launch", "electron-exited");
+		const endpoint = await readElectronEndpoint(port);
+		if (endpoint) return endpoint;
+		await delay(100);
+	}
+	throw new PickerChromeError("watchdog", "timeout");
+}
+
 async function cleanupRun(run) {
 	if (run.cleaning) return run.cleaning;
 	run.cleaning = (async () => {
@@ -541,6 +590,80 @@ async function cleanupRun(run) {
 
 async function cleanupGooglePickerChrome() {
 	await Promise.all([...activeRuns].map(cleanupRun));
+}
+
+async function observeGooglePicker(client, command, identity) {
+	const version = await client.send("Browser.getVersion");
+	if (!identity.check(version)) throw new PickerChromeError("identity", identity.errorClass);
+	let targetId;
+	if (identity.reusePage) {
+		const targets = await client.send("Target.getTargets");
+		targetId = targets?.targetInfos?.find((target) => target.type === "page")?.targetId;
+		if (!targetId) throw new PickerChromeError("target", "missing-electron-window");
+	} else {
+		const target = await client.send("Target.createTarget", { url: "about:blank" });
+		targetId = target.targetId;
+	}
+	const attached = await client.send("Target.attachToTarget", { targetId, flatten: true });
+	const sessionId = attached.sessionId;
+	await Promise.all([
+		client.send("Page.enable", {}, sessionId),
+		client.send("Runtime.enable", {}, sessionId),
+		client.send("DOM.enable", {}, sessionId),
+		client.send("Accessibility.enable", {}, sessionId),
+		client.send("Network.enable", {}, sessionId),
+	]);
+	if (command.mode === "token-empty") {
+		await client.send("Network.setBlockedURLs", { urls: ["https://apis.google.com/js/api.js*"] }, sessionId);
+	}
+	await client.send("Page.addScriptToEvaluateOnNewDocument", {
+		source: `Object.defineProperty(globalThis, "__airSyncPickerTokenPresent", {
+			value: Boolean(new URLSearchParams(location.hash.replace(/^#/, "")).get("token")),
+			configurable: false
+		});`,
+	}, sessionId);
+	await client.send("Page.navigate", { url: command.url }, sessionId);
+	await waitForPickerHostDocument(client, sessionId);
+	const token = await client.send("Runtime.evaluate", {
+		expression: "globalThis.__airSyncPickerTokenPresent",
+		returnByValue: true,
+	}, sessionId);
+	if (typeof token?.result?.value !== "boolean") throw new PickerChromeError("pre-scrub", "token-observation");
+	const tokenPresent = token.result.value;
+	if (command.mode !== "token-empty") {
+		if (!tokenPresent) throw new PickerChromeError("pre-picker", "token-empty");
+		const observed = await credentialedPickerOracle(client, sessionId, command.mode);
+		if (observed.kind === "invalid-key") {
+			return {
+				ok: false,
+				stage: "picker-error",
+				error_class: "developer-key-invalid",
+				token_present: true,
+				interactive: false,
+			};
+		}
+		return {
+			ok: true,
+			stage: "interactive-ready",
+			error_class: null,
+			token_present: true,
+			interactive: true,
+			signal: {
+				dialog: observed.dialog,
+				drive_location: observed.driveLocation,
+				browser_control: observed.browserControl,
+				child_frame: observed.childFrame,
+			},
+		};
+	}
+	const observed = await tokenEmptyOracle(client, sessionId);
+	return {
+		ok: false,
+		stage: "pre-picker",
+		error_class: observed ? "token-empty" : "unexpected-page-error",
+		token_present: tokenPresent,
+		interactive: false,
+	};
 }
 
 async function runGooglePickerChrome(command) {
@@ -564,75 +687,7 @@ async function runGooglePickerChrome(command) {
 		activeRuns.add(run);
 		const endpoint = await waitForDevTools(profilePath, run.child, controller.signal);
 		run.client = await CdpClient.connect(endpoint, controller.signal);
-		const version = await run.client.send("Browser.getVersion");
-		if (!chromeIdentity(version)) throw new PickerChromeError("identity", "not-system-chrome");
-		const target = await run.client.send("Target.createTarget", { url: "about:blank" });
-		const attached = await run.client.send("Target.attachToTarget", { targetId: target.targetId, flatten: true });
-		const sessionId = attached.sessionId;
-		await Promise.all([
-			run.client.send("Page.enable", {}, sessionId),
-			run.client.send("Runtime.enable", {}, sessionId),
-			run.client.send("DOM.enable", {}, sessionId),
-			run.client.send("Accessibility.enable", {}, sessionId),
-			run.client.send("Network.enable", {}, sessionId),
-		]);
-		if (command.mode === "token-empty") {
-			await run.client.send("Network.setBlockedURLs", { urls: ["https://apis.google.com/js/api.js*"] }, sessionId);
-		}
-		await run.client.send("Page.addScriptToEvaluateOnNewDocument", {
-			source: `Object.defineProperty(globalThis, "__airSyncPickerTokenPresent", {
-				value: Boolean(new URLSearchParams(location.hash.replace(/^#/, "")).get("token")),
-				configurable: false
-			});`,
-		}, sessionId);
-		await run.client.send("Page.navigate", { url: command.url }, sessionId);
-		// Target.createTarget("about:blank") can emit its initial load event after
-		// Page.navigate starts. Waiting for that unqualified event is therefore
-		// racy; observe the expected host document and controls instead.
-		await waitForPickerHostDocument(run.client, sessionId);
-		const token = await run.client.send("Runtime.evaluate", {
-			expression: "globalThis.__airSyncPickerTokenPresent",
-			returnByValue: true,
-		}, sessionId);
-		if (typeof token?.result?.value !== "boolean") throw new PickerChromeError("pre-scrub", "token-observation");
-		const tokenPresent = token.result.value;
-		if (command.mode !== "token-empty") {
-			if (!tokenPresent) throw new PickerChromeError("pre-picker", "token-empty");
-			const observed = await credentialedPickerOracle(run.client, sessionId, command.mode);
-			if (observed.kind === "invalid-key") {
-				return {
-					ok: false,
-					stage: "picker-error",
-					error_class: "developer-key-invalid",
-					token_present: true,
-					interactive: false,
-					chrome_identity: true,
-				};
-			}
-			return {
-				ok: true,
-				stage: "interactive-ready",
-				error_class: null,
-				token_present: true,
-				interactive: true,
-				chrome_identity: true,
-				signal: {
-					dialog: observed.dialog,
-					drive_location: observed.driveLocation,
-					browser_control: observed.browserControl,
-					child_frame: observed.childFrame,
-				},
-			};
-		}
-		const observed = await tokenEmptyOracle(run.client, sessionId);
-		return {
-			ok: false,
-			stage: "pre-picker",
-			error_class: observed ? "token-empty" : "unexpected-page-error",
-			token_present: tokenPresent,
-			interactive: false,
-			chrome_identity: true,
-		};
+		return { ...(await observeGooglePicker(run.client, command, { check: chromeIdentity, errorClass: "not-system-chrome" })), chrome_identity: true };
 	} catch (error) {
 		if (error instanceof PickerChromeError) {
 			return {
@@ -642,6 +697,62 @@ async function runGooglePickerChrome(command) {
 				token_present: false,
 				interactive: false,
 				chrome_identity: error.errorClass === "not-system-chrome" ? false : Boolean(run.client),
+			};
+		}
+		throw error;
+	} finally {
+		clearTimeout(watchdog);
+		await cleanupRun(run);
+	}
+}
+
+function electronLaunch(profilePath, extraEnv = {}) {
+	const electronPath = require("electron");
+	const hostScript = join(__dirname, "google-picker-electron-host.cjs");
+	const headless = process.platform === "linux" && !process.env.DISPLAY;
+	const executable = headless ? "xvfb-run" : electronPath;
+	const args = headless
+		? ["-a", electronPath, hostScript, "--no-sandbox"]
+		: [hostScript, "--no-sandbox"];
+	return spawn(executable, args, {
+		detached: true,
+		stdio: ["ignore", "pipe", "pipe"],
+		env: { ...process.env, AIRSYNC_E2E_ELECTRON_USER_DATA_DIR: profilePath, ...extraEnv },
+	});
+}
+
+async function runGooglePickerElectron(command) {
+	const configuredProfile = process.env.AIRSYNC_E2E_ELECTRON_USER_DATA_DIR;
+	const profilePath = configuredProfile || mkdtempSync(join(tmpdir(), "airsync-picker-electron-"));
+	if (configuredProfile) mkdirSync(profilePath, { recursive: true });
+	const port = await reservePort();
+	const run = { child: null, client: null, profilePath, temporaryProfile: !configuredProfile, cleaning: null };
+	const controller = new AbortController();
+	const watchdog = setTimeout(() => controller.abort(), WATCHDOG_MS);
+	try {
+		run.child = electronLaunch(profilePath, { AIRSYNC_E2E_ELECTRON_DEBUG_PORT: String(port) });
+		run.child.stdout?.resume();
+		run.child.stderr?.resume();
+		activeRuns.add(run);
+		const endpoint = await waitForElectronEndpoint(port, run.child, controller.signal);
+		run.client = await CdpClient.connect(endpoint, controller.signal);
+		return {
+			...(await observeGooglePicker(run.client, command, {
+				check: electronIdentity,
+				errorClass: "not-electron",
+				reusePage: true,
+			})),
+			electron_identity: true,
+		};
+	} catch (error) {
+		if (error instanceof PickerChromeError) {
+			return {
+				ok: false,
+				stage: error.stage,
+				error_class: error.errorClass,
+				token_present: false,
+				interactive: false,
+				electron_identity: error.errorClass === "not-electron" ? false : Boolean(run.client),
 			};
 		}
 		throw error;
@@ -669,4 +780,22 @@ async function bootstrapGooglePickerChrome(profilePath) {
 	});
 }
 
-module.exports = { bootstrapGooglePickerChrome, cleanupGooglePickerChrome, runGooglePickerChrome };
+async function bootstrapGooglePickerElectron(profilePath) {
+	if (!profilePath) throw new Error("Missing AIRSYNC_E2E_ELECTRON_USER_DATA_DIR");
+	mkdirSync(profilePath, { recursive: true });
+	const child = electronLaunch(profilePath, { AIRSYNC_E2E_ELECTRON_BOOTSTRAP: "1" });
+	child.stdout?.resume();
+	child.stderr?.resume();
+	await new Promise((resolve, reject) => {
+		child.once("error", reject);
+		child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`Electron exited with code ${code}`)));
+	});
+}
+
+module.exports = {
+	bootstrapGooglePickerChrome,
+	bootstrapGooglePickerElectron,
+	cleanupGooglePickerChrome,
+	runGooglePickerChrome,
+	runGooglePickerElectron,
+};
