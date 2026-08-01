@@ -78,6 +78,9 @@ Read from the real environment or a gitignored `.env.e2e` at the repo root (real
 | `AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN` | Google Drive — minted by the bootstrap |
 | `AIRSYNC_E2E_CHROME_USER_DATA_DIR` | Google Picker — dedicated system-Chrome profile with the test account signed in |
 | `AIRSYNC_E2E_ELECTRON_USER_DATA_DIR` | Google Picker — dedicated Electron BrowserWindow profile with the test account signed in |
+| `AIRSYNC_E2E_FIREFOX_PATH` | Google Picker — official Firefox executable installed by the Firefox setup command |
+| `AIRSYNC_E2E_GECKODRIVER_PATH` | Google Picker — GeckoDriver executable installed by the Firefox setup command |
+| `AIRSYNC_E2E_FIREFOX_PROFILE_DIR` | Google Picker — dedicated Firefox profile with the test account and necessary-cookie consent |
 | `AIRSYNC_E2E_DROPBOX_REFRESH_TOKEN` | Dropbox — minted by the bootstrap |
 | `AIRSYNC_E2E_ONEDRIVE_CLIENT_ID` | OneDrive — your Entra app client id (for loopback + refresh) |
 | `AIRSYNC_E2E_ONEDRIVE_REFRESH_TOKEN` | OneDrive — minted by the bootstrap |
@@ -93,11 +96,14 @@ npm run test:e2e           # all backends — the per-backend files run IN PARAL
 npm run test:e2e:google    # Google Drive only
 npm run test:e2e:dropbox   # Dropbox only
 npm run test:e2e:onedrive  # OneDrive only
-npm run test:e2e:google-picker # deployed Google Picker in system Chrome + Electron
+npm run test:e2e:google-picker # deployed Google Picker in system Chrome + Electron + Firefox
 npm run test:e2e:google-picker:chrome # system Chrome route only
 npm run test:e2e:google-picker:electron # Electron BrowserWindow route only
+npm run test:e2e:google-picker:firefox # official Firefox route only
 npm run e2e:bootstrap:google-picker # one-time sign-in for the dedicated Picker Chrome profile
 npm run e2e:bootstrap:google-picker:electron # one-time sign-in for the dedicated Electron profile
+npm run e2e:setup:google-picker:firefox # install official Firefox + GeckoDriver under the user cache
+npm run e2e:bootstrap:google-picker:firefox # one-time Firefox sign-in + Picker cookie consent
 ```
 
 - `npm run test:e2e` runs the per-backend files **concurrently** (different services =
@@ -117,14 +123,17 @@ npm run e2e:bootstrap:google-picker:electron # one-time sign-in for the dedicate
 ## Google Picker browser fidelity
 
 `npm run test:e2e:google-picker` is a separate opt-in T3 check. It runs the same live
-Picker contract through both an installed system Chrome/Chromium and an Electron
-`BrowserWindow`. Use the `:chrome` or `:electron` suffix to isolate one engine. It does not run the
+Picker contract through an installed system Chrome/Chromium, an Electron
+`BrowserWindow`, and official Firefox. Use the `:chrome`, `:electron`, or `:firefox`
+suffix to isolate one engine. It does not run the
 Google Drive REST contract and is not included in `npm test`, normal CI, or
-`test:e2e:google`. Both engines open the production folder-picker URL and deployed
-`airsync.takezo.dev` page and are observed over the Chrome DevTools Protocol. The system
+`test:e2e:google`. All three engines open the production folder-picker URL and deployed
+`airsync.takezo.dev` page. Chrome and Electron are observed over the Chrome DevTools
+Protocol; Firefox is observed through GeckoDriver and WebDriver BiDi. The system
 Chrome route does not import, launch, or fall back to Electron, so its result remains an
-independent proof of the external Chrome path. Neither route establishes compatibility
-with Firefox or Zen.
+independent proof of the external Chrome path. The Firefox route uses Mozilla's official
+binary rather than Playwright's patched Firefox build and does not establish compatibility
+with Firefox forks such as Zen.
 
 The credentialed Picker needs both the OAuth token and a Google login in Chrome. Set
 `AIRSYNC_E2E_CHROME_USER_DATA_DIR` to a dedicated profile directory, then run
@@ -138,6 +147,15 @@ The Electron route likewise needs its own signed-in profile. Set
 confirm Google Drive opens, and close the Electron window. The fidelity run verifies the
 engine identity from `Browser.getVersion`; a system-Chrome result cannot satisfy the
 Electron contract and an Electron result cannot satisfy the system-Chrome contract.
+
+For Firefox, first run `npm run e2e:setup:google-picker:firefox`. The setup downloads
+Mozilla's current official Linux Firefox and GeckoDriver releases into
+`~/.cache/obsidian-air-sync/firefox-e2e`, then writes their paths and a dedicated profile
+path to the gitignored `.env.e2e`. Run
+`npm run e2e:bootstrap:google-picker:firefox`, sign in if requested, click **Allow
+cookies** inside the real Picker, confirm that the Drive folder browser appears, and
+close Firefox. The bootstrap refreshes the existing Google e2e token only to open that
+production Picker page; it does not print or persist the short-lived access token.
 
 Set `AIRSYNC_E2E_CHROME_PATH` to select an executable explicitly. Otherwise the runner
 checks standard Chrome/Chromium executable names and OS-specific install locations,

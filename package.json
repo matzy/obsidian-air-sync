@@ -18,10 +18,13 @@
 		"test:e2e:google-picker": "vitest run --config e2e/vitest.e2e.config.ts google-picker",
 		"test:e2e:google-picker:chrome": "vitest run --config e2e/vitest.e2e.config.ts google-picker.e2e",
 		"test:e2e:google-picker:electron": "vitest run --config e2e/vitest.e2e.config.ts google-picker-electron",
+		"test:e2e:google-picker:firefox": "vitest run --config e2e/vitest.e2e.config.ts google-picker-firefox",
 		"test:e2e:dropbox": "vitest run --config e2e/vitest.e2e.config.ts dropbox",
 		"test:e2e:onedrive": "vitest run --config e2e/vitest.e2e.config.ts onedrive",
 		"e2e:bootstrap:google-picker": "node e2e/run-google-picker-bootstrap.mjs",
 		"e2e:bootstrap:google-picker:electron": "node e2e/run-google-picker-electron-bootstrap.mjs",
+		"e2e:setup:google-picker:firefox": "node e2e/setup-google-picker-firefox.mjs",
+		"e2e:bootstrap:google-picker:firefox": "node e2e/run-google-picker-firefox-bootstrap.mjs",
 		"e2e:bootstrap": "node e2e/run-bootstrap.mjs"
 	},
 	"keywords": [],
