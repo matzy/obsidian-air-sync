@@ -38,8 +38,10 @@ async function bootstrapGoogle(): Promise<void> {
 			redirectUri: loopback.redirectUri,
 		});
 		const url = await auth.getAuthorizationUrl();
+		const state = auth.getAuthState();
+		if (!state) throw new Error("Google authorization state was not generated.");
 		stdout.write(`\nOpen this URL and authorize Google Drive:\n${url}\n\nWaiting for the redirect...\n`);
-		const params = await loopback.waitForCallback();
+		const params = await loopback.waitForCallback(state);
 		await auth.handleAuthCallback(params);
 		const path = writeEnvE2e("AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN", auth.getTokenState().refreshToken);
 		stdout.write(`\n✓ Google refresh token written to ${path}\n`);
@@ -63,7 +65,7 @@ async function bootstrapDropbox(): Promise<void> {
 			redirectUri: loopback.redirectUri,
 		});
 		stdout.write(`\nOpen this URL and authorize Dropbox:\n${url}\n\nWaiting for the redirect...\n`);
-		const params = await loopback.waitForCallback();
+		const params = await loopback.waitForCallback(state);
 		if (params.state !== state) throw new Error("State mismatch — possible CSRF; aborting.");
 		if (!params.code) throw new Error("No authorization code in the callback.");
 		const auth = new DropboxAuth(DROPBOX_AUTH.clientId);
@@ -94,7 +96,7 @@ async function bootstrapOnedrive(): Promise<void> {
 			redirectUri: loopback.redirectUri,
 		});
 		stdout.write(`\nOpen this URL and authorize OneDrive:\n${url}\n\nWaiting for the redirect...\n`);
-		const params = await loopback.waitForCallback();
+		const params = await loopback.waitForCallback(state);
 		if (params.state !== state) throw new Error("State mismatch — possible CSRF; aborting.");
 		if (!params.code) throw new Error("No authorization code in the callback.");
 		const auth = new OneDriveAuth(clientId);

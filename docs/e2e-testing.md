@@ -76,6 +76,7 @@ Read from the real environment or a gitignored `.env.e2e` at the repo root (real
 | `AIRSYNC_E2E_GOOGLE_CLIENT_ID` | Google Drive — your GCP OAuth client id (for loopback) |
 | `AIRSYNC_E2E_GOOGLE_CLIENT_SECRET` | Google Drive — your GCP OAuth client secret |
 | `AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN` | Google Drive — minted by the bootstrap |
+| `AIRSYNC_E2E_CHROME_USER_DATA_DIR` | Google Picker — dedicated system-Chrome profile with the test account signed in |
 | `AIRSYNC_E2E_DROPBOX_REFRESH_TOKEN` | Dropbox — minted by the bootstrap |
 | `AIRSYNC_E2E_ONEDRIVE_CLIENT_ID` | OneDrive — your Entra app client id (for loopback + refresh) |
 | `AIRSYNC_E2E_ONEDRIVE_REFRESH_TOKEN` | OneDrive — minted by the bootstrap |
@@ -91,6 +92,8 @@ npm run test:e2e           # all backends — the per-backend files run IN PARAL
 npm run test:e2e:google    # Google Drive only
 npm run test:e2e:dropbox   # Dropbox only
 npm run test:e2e:onedrive  # OneDrive only
+npm run test:e2e:google-picker # deployed Google Picker in installed system Chrome/Chromium
+npm run e2e:bootstrap:google-picker # one-time sign-in for the dedicated Picker Chrome profile
 ```
 
 - `npm run test:e2e` runs the per-backend files **concurrently** (different services =
@@ -106,6 +109,55 @@ npm run test:e2e:onedrive  # OneDrive only
 > `.env.e2e` (the refresh token alone falls back to the built-in auth server, which can't
 > refresh a token minted by your own OAuth client). OneDrive likewise needs
 > `AIRSYNC_E2E_ONEDRIVE_CLIENT_ID` (the refresh token is bound to your own client; the shipped app has no localhost redirect).
+
+## Google Picker browser fidelity
+
+`npm run test:e2e:google-picker` is a separate opt-in T3 check. It does not run the
+Google Drive REST contract and is not included in `npm test`, normal CI, or
+`test:e2e:google`. It launches an installed **system Chrome/Chromium** directly, opens the
+production folder-picker URL and deployed `airsync.takezo.dev` page, and observes it over
+the Chrome DevTools Protocol. Electron and `BrowserWindow` are not imported, launched, or
+used as a fallback. This check proves only the system Chrome/Chromium path; it does not
+establish compatibility with Firefox or Zen.
+
+The credentialed Picker needs both the OAuth token and a Google login in Chrome. Set
+`AIRSYNC_E2E_CHROME_USER_DATA_DIR` to a dedicated profile directory, then run
+`npm run e2e:bootstrap:google-picker`, sign in to the throwaway Google test account,
+confirm Google Drive opens, and close the dedicated Chrome window. Do not point this
+variable at your normal browser profile. The E2E reuses only this dedicated profile.
+
+Set `AIRSYNC_E2E_CHROME_PATH` to select an executable explicitly. Otherwise the runner
+checks standard Chrome/Chromium executable names and OS-specific install locations,
+including Windows Chrome when invoked from WSL. Each invocation uses a fresh debugging
+endpoint and either the configured dedicated profile or, when unset, a unique temporary
+profile. It closes Chrome after each case and removes only temporary profiles on success,
+failure, timeout, or termination. The browser identity is verified through
+`Browser.getVersion`; an Electron marker or a non-Chrome/Chromium product fails the check.
+
+The credentialed cases use the same `AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN` as the Google
+Drive REST e2e. They also use the same client-aware auth selection: when both
+`AIRSYNC_E2E_GOOGLE_CLIENT_ID` and `_CLIENT_SECRET` are present, the token is refreshed
+through `GoogleAuthDirect`; otherwise it is refreshed through the built-in `GoogleAuth`
+server path. A refresh token is bound to the OAuth client that issued it, so keep the
+matching client values alongside a token minted by the loopback bootstrap. Keep all
+credentials in the real environment or the gitignored `.env.e2e`; never paste them into
+an issue or test output.
+
+Without the shared Google refresh token, the valid and invalid-key cases are each
+reported as a named skip with the missing env variable; the credential-independent token-empty
+negative control still runs. That control registers its observer before navigation,
+records only whether the fragment contained a token, clicks the deployed page's real
+`#choose` control, and passes only after the deployed `#content .error` reports the
+access-token error. HTTP status, static HTML, or element existence alone cannot pass.
+A skip means the corresponding credentialed live behavior was **not executed**, not that
+the deployed Picker passed. Credentialed invalid-key and interactive-ready completion is
+the next fidelity milestone and requires the shared Google token above.
+
+The system-browser control has a bounded 55-second watchdog. Its result contains only
+stage, error class, token-present, interactivity, and Chrome-identity booleans;
+access/refresh tokens, API keys, fragment-bearing URLs, raw DOM/CDP payloads, raw browser
+identity and stderr, profiles, traces, and account screenshots are neither printed nor
+persisted. No Playwright, Puppeteer, or other browser-automation dependency is used.
 
 ## Running behind a TLS-intercepting proxy
 
@@ -129,6 +181,10 @@ signature, requires the leaf to match the requested host, and requires the chain
 in a CA from the bundle. It is **not** a blanket "trust everything": an unrelated or forged
 cert still fails. Leave the variable **unset** (the default) and Chromium's normal strict
 validation is used unchanged — so ordinary local runs are unaffected.
+
+`AIRSYNC_E2E_EXTRA_CA` applies to the Electron `net` REST transport only. The Picker check
+uses the installed system Chrome/Chromium trust store and does not alter certificate
+verification.
 
 > Use the **fetch** transport instead (`AIRSYNC_E2E_TRANSPORT=fetch`, which honours
 > `NODE_EXTRA_CA_CERTS`) only as a last resort: it diverges from desktop on the

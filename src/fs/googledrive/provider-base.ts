@@ -24,23 +24,7 @@ import {
 	storeGoogleDriveTokens,
 	GOOGLE_DRIVE_SECRET_NAMES,
 } from "./auth-provider-base";
-
-/**
- * Web page (on the OAuth relay domain) that hosts the Google Picker. The plugin opens
- * it in the browser (it can't load the remote Picker SDK inside Obsidian); the page
- * bounces the selection back to `obsidian://air-sync-folder?id=…&name=…&state=…` (a
- * backend-agnostic scheme, not the auth one), mirroring the auth relay. The plugin's
- * current access token is passed in the URL fragment so the Picker can render the
- * user's Google Drive — the fragment never reaches the relay host.
- */
-const FOLDER_PICKER_URL = "https://airsync.takezo.dev/googledrive-folder";
-
-/**
- * Public Google Picker API key, passed to the host page as `?apiKey=` so the plugin
- * owns it (the page keeps an embedded copy only as a fallback). NOT a secret: locked
- * in Cloud Console to the Picker API + referrer `airsync.takezo.dev/*`.
- */
-const PICKER_API_KEY = "AIzaSyDyXTKejmlaTcBIDCx3lJYFhDMmyRKRZwc";
+import { buildGoogleDriveFolderPickerUrl } from "./folder-picker-url";
 const HEX_DIGITS = "0123456789abcdef";
 
 function hexDigit(value: number): string {
@@ -199,7 +183,7 @@ export abstract class GoogleDriveProviderBase implements IBackendProvider {
 		const state = randomState();
 		// apiKey in the query (public, referrer-restricted); token in the fragment so it
 		// never reaches the relay host — the fragment must stay last.
-		const url = `${FOLDER_PICKER_URL}?state=${encodeURIComponent(state)}&apiKey=${encodeURIComponent(PICKER_API_KEY)}#token=${encodeURIComponent(token)}`;
+		const url = buildGoogleDriveFolderPickerUrl({ state, accessToken: token });
 		if (Platform.isMobile) {
 			window.location.href = url;
 		} else {

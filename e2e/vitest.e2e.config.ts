@@ -1,6 +1,13 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
+// The Picker suite launches an installed system Chrome/Chromium. Its only requestUrl
+// call is the OAuth refresh needed to mint a short-lived Picker access token; keep
+// that setup call on Node fetch so the dedicated system-browser path has no Electron
+// dependency. Avoid starting the REST-only Electron net host (and its fixed port).
+const pickerOnly = process.argv.some((arg) => arg.includes("google-picker"));
+if (pickerOnly) process.env.AIRSYNC_E2E_TRANSPORT ??= "fetch";
+
 /**
  * Standalone vitest config for the opt-in real-cloud e2e (ADR 0003). It is NEVER
  * picked up by `npm test` (the default config includes only the src test glob)
@@ -16,7 +23,7 @@ export default defineConfig({
 		// Launch the Electron `net` host once for the run: every requestUrl in the e2e
 		// goes through the real desktop engine (not fetch), so redirect-auth /
 		// Content-Length / empty-body behaviours match production. See request-url.ts.
-		globalSetup: ["./e2e/electron-net-setup.ts"],
+		globalSetup: pickerOnly ? [] : ["./e2e/electron-net-setup.ts"],
 		// Generous: a single Dropbox 429 backoff is capped at 64s
 		// (MAX_RATE_LIMIT_DELAY_MS), and a test may do several writes — so a 60s
 		// per-test timeout can trip on rate-limit backoff alone under sequential load.

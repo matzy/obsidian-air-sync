@@ -18,8 +18,8 @@ export function loopbackPort(): number {
 export interface LoopbackCapture {
 	/** The redirect URI to send in the authorize request (matches the listening server). */
 	redirectUri: string;
-	/** Resolves with the callback query params once the browser hits the loopback. */
-	waitForCallback: () => Promise<Record<string, string>>;
+	/** Resolves with the first callback whose state matches this authorization run. */
+	waitForCallback: (expectedState: string) => Promise<Record<string, string>>;
 	/** Stop the server (call in a finally). */
 	close: () => void;
 }
@@ -33,6 +33,7 @@ export interface LoopbackCapture {
 export function startLoopback(port: number): Promise<LoopbackCapture> {
 	let resolveParams: (params: Record<string, string>) => void;
 	let rejectParams: (err: Error) => void;
+	let expectedState: string | null = null;
 	const captured = new Promise<Record<string, string>>((res, rej) => {
 		resolveParams = res;
 		rejectParams = rej;
@@ -46,6 +47,15 @@ export function startLoopback(port: number): Promise<LoopbackCapture> {
 			return;
 		}
 		const params = Object.fromEntries(url.searchParams.entries());
+		if (!expectedState || params.state !== expectedState) {
+			response.statusCode = 409;
+			response.setHeader("Content-Type", "text/html; charset=utf-8");
+			response.end(
+				"<!doctype html><meta charset=\"utf-8\"><h2>Authorization attempt expired</h2>" +
+					"<p>Use the most recently opened Google authorization tab.</p>",
+			);
+			return;
+		}
 		const ok = params.code; // we only ever run the authorization-code flow
 		response.statusCode = 200;
 		response.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -67,7 +77,10 @@ export function startLoopback(port: number): Promise<LoopbackCapture> {
 			server.on("error", (err) => rejectParams(err)); // later errors fail the wait
 			resolveStart({
 				redirectUri: `http://localhost:${port}/callback`,
-				waitForCallback: () => captured,
+				waitForCallback: (state) => {
+					expectedState = state;
+					return captured;
+				},
 				close: () => server.close(),
 			});
 		});

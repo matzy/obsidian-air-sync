@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe } from "vitest";
-import type { IGoogleAuth } from "../src/fs/googledrive/auth";
-import { GoogleAuth, GoogleAuthDirect } from "../src/fs/googledrive/auth";
 import { GoogleDriveClient } from "../src/fs/googledrive/client";
 import { GoogleDriveFs } from "../src/fs/googledrive/index";
 import { runIFileSystemContract } from "../src/fs/ifilesystem-contract";
-import { readCreds } from "./helpers/env";
+import {
+	createGoogleE2EAuth,
+	GOOGLE_E2E_REFRESH_TOKEN_ENV,
+	readGoogleE2ECreds,
+} from "./helpers/google-auth";
 import {
 	cleanupGoogleDriveParent,
 	makeGoogleDriveChild,
@@ -19,28 +21,18 @@ import {
  * Skips (with a warning, never failing) when the refresh token is absent. Get one
  * via `npm run e2e:bootstrap -- google`. See docs/e2e-testing.md.
  */
-const creds = readCreds("AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN");
-const clientId = process.env.AIRSYNC_E2E_GOOGLE_CLIENT_ID;
-const clientSecret = process.env.AIRSYNC_E2E_GOOGLE_CLIENT_SECRET;
+const creds = readGoogleE2ECreds();
 
 if (!creds) {
 	console.warn(
-		"[e2e] Skipping Google Drive: set AIRSYNC_E2E_GOOGLE_REFRESH_TOKEN " +
+		`[e2e] Skipping Google Drive: set ${GOOGLE_E2E_REFRESH_TOKEN_ENV} ` +
 			"(run `npm run e2e:bootstrap -- google`; see docs/e2e-testing.md).",
 	);
 	describe.skip("IFileSystem contract — GoogleDriveFs (real) [no creds]", () => {
 		/* skipped */
 	});
 } else {
-	// A refresh token is bound to the OAuth client that issued it, so refresh with
-	// the matching client: GoogleAuthDirect (your own GCP client) when the loopback
-	// bootstrap was used, else the built-in GoogleAuth (auth server, no secret).
-	// Seeding an empty access token + expiry 0 forces a refresh on first use.
-	const auth: IGoogleAuth =
-		clientId && clientSecret
-			? new GoogleAuthDirect({ clientId, clientSecret })
-			: new GoogleAuth();
-	auth.setTokens(creds.refreshToken, "", 0);
+	const auth = createGoogleE2EAuth(creds.refreshToken);
 	const client = new GoogleDriveClient((force) => auth.getAccessToken(force));
 	let parentId = "";
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers";
 import { FOLDER_MIME } from "./types";
 import type { AirSyncSettings } from "../../settings";
+import { buildGoogleDriveFolderPickerUrl } from "./folder-picker-url";
 
 vi.mock("obsidian");
 
@@ -43,6 +44,21 @@ describe("GoogleDriveProvider.isConnected / getIdentity", () => {
 });
 
 describe("GoogleDriveProvider.startWebFolderPick", () => {
+	it("keeps the production URL builder's token out of the query", () => {
+		const url = buildGoogleDriveFolderPickerUrl({
+			state: "state with spaces",
+			accessToken: "token/value?secret",
+			apiKey: "public-key",
+		});
+		const [query, fragment] = url.split("#");
+
+		expect(query).toBe(
+			"https://airsync.takezo.dev/googledrive-folder?state=state%20with%20spaces&apiKey=public-key",
+		);
+		expect(query).not.toContain("token%2Fvalue");
+		expect(fragment).toBe("token=token%2Fvalue%3Fsecret");
+	});
+
 	it("opens the picker with the state + apiKey in the query and the token in the fragment only", async () => {
 		const openSpy = vi.fn();
 		vi.stubGlobal("window", { open: openSpy, location: { href: "" } });
