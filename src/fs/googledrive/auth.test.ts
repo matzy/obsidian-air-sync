@@ -108,6 +108,20 @@ describe("GoogleAuth.getAuthorizationUrl", () => {
 		expect(decoded.app).toBe("obsidian-plugin");
 		expect(typeof decoded.nonce).toBe("string");
 	});
+
+	it("builds the top-level Google Picker OAuth flow for folder selection", async () => {
+		const { GoogleAuth } = await import("./auth");
+		const auth = new GoogleAuth();
+
+		const url = new URL(await auth.getFolderPickerAuthorizationUrl());
+
+		expect(url.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/drive.file");
+		expect(url.searchParams.get("prompt")).toBe("consent");
+		expect(url.searchParams.get("trigger_onepick")).toBe("true");
+		expect(url.searchParams.get("allow_folder_selection")).toBe("true");
+		expect(url.searchParams.get("mimetypes")).toBe("application/vnd.google-apps.folder");
+		expect(url.searchParams.get("state")).toBe(auth.getAuthState());
+	});
 });
 
 describe("GoogleAuth.getAccessToken concurrency", () => {

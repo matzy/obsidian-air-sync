@@ -119,6 +119,7 @@ Two OAuth implementations share a common base class (`GoogleAuthBase`). The serv
 - Plugin receives tokens via `obsidian://air-sync-auth?access_token=...&refresh_token=...`
 - Token refresh: POST `https://auth-airsync.takezo.dev/google/token/refresh` with JSON body `{ refresh_token }`
 - Scope: `drive.file` (app-created files only)
+- Current plugin versions use Google's top-level OAuth Picker (`trigger_onepick=true`, `allow_folder_selection=true`, folder MIME filter) for the built-in backend on desktop and mobile. The auth worker preserves the callback's `picked_file_ids` while exchanging the accompanying code. Older plugin versions keep using their unchanged hosted PickerBuilder endpoint. Custom OAuth does not expose a Picker; its folder ID is entered explicitly in settings. The plugin validates one id, the shared OAuth/picker state, Drive reachability, and folder MIME before publishing the new binding.
 
 ### GoogleAuthDirect (PKCE, custom credentials)
 
@@ -175,7 +176,7 @@ Layout: `<Google Drive root>/obsidian-air-sync/<Vault Name>` — the folder **na
 - If `remoteVaultFolderId` is cached, `resolveLinked()` just confirms the folder is accessible via `getFile()`.
 - Otherwise it find-or-creates the root `obsidian-air-sync` folder, then find-or-creates `obsidian-air-sync/<Vault Name>` (`findChildByName` / `createFolder`) and binds it.
 
-Bound folders picked via the Google Picker are addressed purely by id (`completeWebFolderPick`), independent of this layout.
+Bound folders picked via either Google Picker flow are addressed purely by id (`completeWebFolderPick`), independent of this layout. The built-in top-level flow completes authorization and binding under one `BackendManager` connecting gate so no filesystem is exposed between those two steps.
 
 ### createFs() contract
 

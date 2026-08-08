@@ -118,7 +118,7 @@ export interface IBackendProvider {
 }
 
 /**
- * A backend's web-hosted folder-pick flow, exposed as one object on
+ * A backend's asynchronous folder-pick flow, exposed as one object on
  * {@link IBackendProvider.picker}. The two halves are required together so a backend
  * can't ship a `start` with no `complete` (or vice versa) — the pick would dead-end.
  * Resolving the bound folder's display path is deliberately NOT here: a folder can be
@@ -127,7 +127,7 @@ export interface IBackendProvider {
  */
 export interface WebFolderPicker {
 	/**
-	 * Open the picker (e.g. the Google Picker on the OAuth relay) in the browser. The
+	 * Open the picker (e.g. Google's top-level OAuth Picker) in the browser. The
 	 * selection returns asynchronously via an `obsidian://` deep link and is bound by
 	 * {@link completeWebFolderPick}. Returns backendData to persist (e.g. a CSRF nonce).
 	 */

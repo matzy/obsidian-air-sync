@@ -269,13 +269,12 @@ export default defineConfig(
 		rules: { "max-lines": ["error", { max: 317, skipBlankLines: true, skipComments: true }] },
 	},
 	{
-		// Re-pinned from 300 for the issue #33 initial-sync fix: a new onRemoteBound
-		// signal fired at the two moments a remote FS first becomes bound (initBackend
-		// tail + completeBackendConnect reconnect tail) so the first sync runs on bind
-		// instead of an incidental event — a cohesive addition to the existing connect/
-		// bind lifecycle this module already owns, not a natural split point.
+		// Re-pinned from 303 for the top-level Google Picker callback. The
+		// auth+folder operation itself lives in backend-auth-folder-pick.ts; this file
+		// retains only its connecting gate and lifecycle re-init because those must
+		// remain coordinated with every other bind/connect path owned here.
 		files: ["src/fs/backend-manager.ts"],
-		rules: { "max-lines": ["error", { max: 303, skipBlankLines: true, skipComments: true }] },
+		rules: { "max-lines": ["error", { max: 341, skipBlankLines: true, skipComments: true }] },
 	},
 	{
 		// Lint manifest.json for the words the Obsidian submission validator

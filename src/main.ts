@@ -159,6 +159,7 @@ export default class AirSyncPlugin extends Plugin {
 		this.addSettingTab(this.settingTab);
 
 		// OAuth callback via obsidian://air-sync-auth?access_token=...&state=... or ?code=...&state=...
+		// Google's top-level Picker also returns picked_file_ids on this callback.
 		this.registerObsidianProtocolHandler("air-sync-auth", (params) => {
 			if (!params.access_token && !params.code) {
 				new Notice("Authorization failed: no token or code received");
@@ -169,7 +170,11 @@ export default class AirSyncPlugin extends Plugin {
 			for (const [key, value] of protocolParamsEntries(params)) {
 				url.searchParams.set(key, value);
 			}
-			void this.backendManager.completeBackendConnect(url.toString());
+			if (params.picked_file_ids) {
+				void this.backendManager.completeBackendAuthFolderPick(url.toString(), params);
+			} else {
+				void this.backendManager.completeBackendConnect(url.toString());
+			}
 		});
 
 		// Web folder-picker result via obsidian://air-sync-folder. Backend-agnostic:

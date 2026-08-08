@@ -115,7 +115,25 @@ export class GoogleAuth extends GoogleAuthBase {
 
 	getAuthorizationUrl(): Promise<string> {
 		const state = this.generateState();
+		return Promise.resolve(this.buildAuthorizationUrl(state));
+	}
 
+	/**
+	 * Build Google's top-level Picker authorization flow for desktop and mobile.
+	 * This avoids the cross-site iframe boundary used by PickerBuilder: Google owns
+	 * the full-page navigation and returns the selected id as `picked_file_ids`
+	 * alongside the authorization code.
+	 */
+	getFolderPickerAuthorizationUrl(): Promise<string> {
+		const state = this.generateState({ folderPick: true });
+		return Promise.resolve(this.buildAuthorizationUrl(state, {
+			trigger_onepick: "true",
+			allow_folder_selection: "true",
+			mimetypes: "application/vnd.google-apps.folder",
+		}));
+	}
+
+	private buildAuthorizationUrl(state: string, extra: Record<string, string> = {}): string {
 		const params = new URLSearchParams({
 			client_id: GOOGLE_DRIVE_AUTH.clientId,
 			redirect_uri: GOOGLE_DRIVE_AUTH.redirectUri,
@@ -124,8 +142,9 @@ export class GoogleAuth extends GoogleAuthBase {
 			access_type: "offline",
 			prompt: "consent",
 			state,
+			...extra,
 		});
-		return Promise.resolve(`${GOOGLE_AUTH_URL}?${params.toString()}`);
+		return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 	}
 
 	/**

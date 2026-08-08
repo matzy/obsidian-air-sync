@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers.test";
 import { FOLDER_MIME } from "./types";
 import type { AirSyncSettings } from "../../settings";
-import { buildGoogleDriveFolderPickerUrl } from "./folder-picker-url";
+import type { IBackendProvider } from "../backend";
 
 vi.mock("obsidian");
 
@@ -15,6 +15,11 @@ async function makeProvider(secrets: Record<string, string> = {}) {
 	const { GoogleDriveProvider } = await import("./provider");
 	const store = createMockSecretStore(secrets);
 	return { provider: new GoogleDriveProvider(store), store };
+}
+
+async function makeCustomProvider(secrets: Record<string, string> = {}) {
+	const { GoogleDriveCustomProvider } = await import("./provider-custom");
+	return new GoogleDriveCustomProvider(createMockSecretStore(secrets));
 }
 
 function settingsWith(googledrive: Record<string, unknown> = {}): AirSyncSettings {
@@ -44,44 +49,20 @@ describe("GoogleDriveProvider.isConnected / getIdentity", () => {
 });
 
 describe("GoogleDriveProvider.startWebFolderPick", () => {
-	it("keeps the production URL builder's token out of the query", () => {
-		const url = buildGoogleDriveFolderPickerUrl({
-			state: "state with spaces",
-			accessToken: "token/value?secret",
-			apiKey: "public-key",
-		});
-		const [query, fragment] = url.split("#");
-
-		expect(query).toBe(
-			"https://airsync.takezo.dev/googledrive-folder?state=state%20with%20spaces&apiKey=public-key",
-		);
-		expect(query).not.toContain("token%2Fvalue");
-		expect(fragment).toBe("token=token%2Fvalue%3Fsecret");
-	});
-
-	it("opens the picker with the state + apiKey in the query and the token in the fragment only", async () => {
+	it("uses Google's top-level OAuth Picker flow on desktop", async () => {
 		const openSpy = vi.fn();
 		vi.stubGlobal("window", { open: openSpy, location: { href: "" } });
 		const { provider } = await makeProvider(CONNECTED);
 
 		const res = await provider.startWebFolderPick(settingsWith({ remoteVaultFolderId: "FID", ...FRESH }));
 
-		// CSRF nonce: 24 random bytes → 48 hex chars.
-		expect(res.pendingFolderPickState).toMatch(/^[0-9a-f]{48}$/);
-
 		expect(openSpy).toHaveBeenCalledTimes(1);
-		const url = String(openSpy.mock.calls[0]![0]);
-		const hashIndex = url.indexOf("#");
-		const query = url.slice(0, hashIndex);
-		const fragment = url.slice(hashIndex + 1);
-		// The access token rides the fragment (never the query → never sent to the relay host).
-		expect(fragment).toBe("token=AT");
-		expect(query).toContain(`state=${String(res.pendingFolderPickState)}`);
-		// The public, referrer-restricted Picker API key is supplied by the plugin (the
-		// host page falls back to its embedded copy only when this is absent).
-		expect(query).toMatch(/&apiKey=AIza[A-Za-z0-9_-]+/);
-		expect(query).not.toContain("token");
-		expect(query.startsWith("https://airsync.takezo.dev/googledrive-folder?")).toBe(true);
+		const url = new URL(String(openSpy.mock.calls[0]![0]));
+		expect(url.origin).toBe("https://accounts.google.com");
+		expect(url.searchParams.get("trigger_onepick")).toBe("true");
+		expect(url.searchParams.get("allow_folder_selection")).toBe("true");
+		expect(res.pendingAuthState).toBe(url.searchParams.get("state"));
+		expect(res.pendingFolderPickState).toBe(url.searchParams.get("state"));
 	});
 
 	it("opens the picker after auth even before any folder is bound", async () => {
@@ -93,8 +74,31 @@ describe("GoogleDriveProvider.startWebFolderPick", () => {
 
 		const res = await provider.startWebFolderPick(settingsWith({ ...FRESH }));
 
-		expect(res.pendingFolderPickState).toMatch(/^[0-9a-f]{48}$/);
+		expect(res.pendingFolderPickState).toBe(res.pendingAuthState);
 		expect(openSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses Google's top-level OAuth Picker flow on mobile without loading the iframe relay", async () => {
+		const { Platform } = await import("../../platform/obsidian");
+		const mutablePlatform = Platform as { isMobile: boolean };
+		mutablePlatform.isMobile = true;
+		const location = { href: "" };
+		vi.stubGlobal("window", { open: vi.fn(), location });
+		const { provider } = await makeProvider(CONNECTED);
+
+		try {
+			const res = await provider.startWebFolderPick(settingsWith({ ...FRESH }));
+			const url = new URL(location.href);
+
+			expect(url.origin).toBe("https://accounts.google.com");
+			expect(url.searchParams.get("trigger_onepick")).toBe("true");
+			expect(url.searchParams.get("allow_folder_selection")).toBe("true");
+			expect(res.pendingAuthState).toBe(url.searchParams.get("state"));
+			expect(res.pendingFolderPickState).toBe(url.searchParams.get("state"));
+			expect(location.href).not.toContain("airsync.takezo.dev/googledrive-folder");
+		} finally {
+			mutablePlatform.isMobile = false;
+		}
 	});
 
 	it("refuses to open the picker when not authenticated", async () => {
@@ -103,6 +107,11 @@ describe("GoogleDriveProvider.startWebFolderPick", () => {
 		const { provider } = await makeProvider({});
 		await expect(provider.startWebFolderPick(settingsWith({}))).rejects.toThrow(/Connect to Google Drive/);
 		expect(openSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not expose a Picker capability for custom OAuth", async () => {
+		const provider = await makeCustomProvider();
+		expect((provider as IBackendProvider).picker).toBeUndefined();
 	});
 });
 
@@ -141,6 +150,34 @@ describe("GoogleDriveProvider.completeWebFolderPick", () => {
 			return typeof opts === "object" && opts.method && opts.method !== "GET";
 		});
 		expect(writes.length).toBe(0);
+	});
+
+	it("accepts the single folder id returned by Google's OAuth Picker callback", async () => {
+		(await spyRequestUrl()).mockResolvedValue(
+			mockRes({ id: "FID", name: "MyVault", mimeType: FOLDER_MIME }),
+		);
+		const { provider } = await makeProvider(CONNECTED);
+
+		const res = await provider.completeWebFolderPick(
+			{ picked_file_ids: "FID", state: "STATE-1" },
+			settingsWith(PENDING),
+		);
+
+		expect(res.backendUpdates).toMatchObject({
+			remoteVaultFolderId: "FID",
+			pendingFolderPickState: "",
+		});
+	});
+
+	it("rejects multiple ids from a forged mobile Picker callback", async () => {
+		const spy = await spyRequestUrl();
+		const { provider } = await makeProvider(CONNECTED);
+
+		await expect(provider.completeWebFolderPick(
+			{ picked_file_ids: "FID,OTHER", state: "STATE-1" },
+			settingsWith(PENDING),
+		)).rejects.toThrow(/exactly one folder/);
+		expect(spy).not.toHaveBeenCalled();
 	});
 
 	it("rejects a CSRF state mismatch before any network call", async () => {

@@ -1,0 +1,14 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"allowJs": false,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"target": "ES2022",
+		"types": ["node", "vitest/globals"]
+	},
+	"include": [
+		"google-picker/**/*.ts",
+		"vitest.google-picker-*.config.ts"
+	]
+}

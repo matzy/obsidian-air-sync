@@ -530,6 +530,78 @@ describe("BackendManager — web folder pick", () => {
 		expect(refreshSettingsDisplay).toHaveBeenCalled();
 	});
 
+	it("completes Picker auth and folder binding before exposing the new connection", async () => {
+		const settings = mockSettings();
+		settings.backendData = {
+			pendingAuthState: "S",
+			pendingFolderPickState: "S",
+		};
+		const authSpy = vi.fn().mockResolvedValue({
+			accessTokenExpiry: 123,
+			pendingAuthState: "",
+		});
+		fakeProvider.auth.completeAuth = authSpy;
+		const pickSpy = vi.fn().mockResolvedValue({
+			backendUpdates: { remoteVaultFolderId: "id:new", pendingFolderPickState: "" },
+		});
+		fakeProvider.picker!.completeWebFolderPick = pickSpy;
+		fakeProvider.getIdentity = () => {
+			const id = settings.backendData.remoteVaultFolderId as string | undefined;
+			return id ? `test:${id}` : null;
+		};
+		const deps = createDeps(settings);
+		const mgr = new BackendManager(deps);
+		await mgr.initBackend();
+		vi.mocked(deps.onConnected).mockClear();
+
+		await mgr.completeBackendAuthFolderPick(
+			"https://callback?access_token=AT&state=S&picked_file_ids=id%3Anew",
+			{ access_token: "AT", state: "S", picked_file_ids: "id:new" },
+		);
+
+		expect(authSpy).toHaveBeenCalledTimes(1);
+		expect(pickSpy).toHaveBeenCalledTimes(1);
+		expect(settings.backendData).toMatchObject({
+			pendingAuthState: "",
+			pendingFolderPickState: "",
+			remoteVaultFolderId: "id:new",
+		});
+		expect(deps.onConnected).toHaveBeenCalledTimes(1);
+		expect(deps.notify).toHaveBeenCalledWith("Remote folder updated");
+	});
+
+	it("does not publish a filesystem when Picker folder validation fails", async () => {
+		const settings = mockSettings();
+		settings.backendData = {
+			pendingAuthState: "S",
+			pendingFolderPickState: "S",
+		};
+		fakeProvider.auth.completeAuth = vi.fn().mockResolvedValue({
+			accessTokenExpiry: 123,
+			pendingAuthState: "",
+		});
+		fakeProvider.picker!.completeWebFolderPick = vi.fn()
+			.mockRejectedValue(new Error("inaccessible folder"));
+		const deps = createDeps(settings);
+		const mgr = new BackendManager(deps);
+		await mgr.initBackend();
+		vi.mocked(deps.onConnected).mockClear();
+
+		await mgr.completeBackendAuthFolderPick(
+			"https://callback?access_token=AT&state=S&picked_file_ids=id%3Abad",
+			{ access_token: "AT", state: "S", picked_file_ids: "id:bad" },
+		);
+
+		expect(deps.onConnected).not.toHaveBeenCalled();
+		expect(settings.backendData).toMatchObject({
+			pendingAuthState: "",
+			pendingFolderPickState: "S",
+		});
+		expect(deps.notify).toHaveBeenCalledWith(
+			"Folder selection failed: inaccessible folder",
+		);
+	});
+
 	it("completeBackendFolderPick holds the connecting flag across the bind", async () => {
 		const settings = mockSettings();
 		let connectingDuringBind = false;

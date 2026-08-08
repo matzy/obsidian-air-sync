@@ -5,6 +5,7 @@ import type { IBackendProvider } from "./backend";
 import type { Logger } from "../logging/logger";
 import { getBackendProvider, getAllBackendProviders } from "./registry";
 import { AuthError } from "./errors";
+import { completeAuthFolderPick } from "./backend-auth-folder-pick";
 
 export interface BackendManagerDeps {
 	getSettings: () => AirSyncSettings;
@@ -242,6 +243,52 @@ export class BackendManager {
 		}
 		// Re-init detects the new identity, clears sync state, and builds an FS
 		// against the chosen folder.
+		await this.initBackend();
+		this.deps.refreshSettingsDisplay();
+	}
+
+	/**
+	 * Complete Google's top-level Picker callback as one guarded operation.
+	 * The callback carries both fresh OAuth credentials and the selected folder id;
+	 * no filesystem is exposed to the sync engine until both have been validated and
+	 * persisted, so a rebind cannot briefly sync against the old target.
+	 */
+	async completeBackendAuthFolderPick(
+		input: string,
+		params: Record<string, string | undefined>,
+	): Promise<void> {
+		if (this.connecting) {
+			this.deps.notify("Busy connecting — reopen the folder picker in a moment.");
+			return;
+		}
+		const settings = this.deps.getSettings();
+		const provider = this.backendProvider ?? getBackendProvider(settings.backendType) ?? null;
+		this.backendProvider = provider;
+		if (!provider?.picker) {
+			this.deps.notify("This backend has no folder picker.");
+			return;
+		}
+
+		this.connecting = true;
+		let completed = false;
+		try {
+			completed = await completeAuthFolderPick({
+				input,
+				params,
+				settings,
+				auth: provider.auth,
+				picker: provider.picker,
+				logger: this.deps.getLogger(),
+				saveSettings: this.deps.saveSettings,
+				resetAll: () => this.resetAll(settings),
+				closeRemoteFs: () => this.closeRemoteFs(),
+				notify: this.deps.notify,
+			});
+		} finally {
+			this.connecting = false;
+		}
+		if (!completed) return;
+
 		await this.initBackend();
 		this.deps.refreshSettingsDisplay();
 	}

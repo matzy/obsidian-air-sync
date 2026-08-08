@@ -8,6 +8,8 @@ import { GoogleDriveProviderBase } from "./provider-base";
 import { GoogleDriveAuthProviderBase } from "./auth-provider-base";
 import type { IBackendSettingsRenderer } from "../settings-renderer";
 import { GoogleDriveSettingsRenderer } from "../../ui/googledrive-settings";
+import { Platform } from "../../platform/obsidian";
+import type { WebFolderPicker } from "../backend";
 
 /** Google Drive's slice of the active-backend `backendData` bag (tokens live in SecretStorage) */
 export interface GoogleDriveBackendData {
@@ -59,6 +61,28 @@ export class GoogleDriveProvider extends GoogleDriveProviderBase {
 	constructor(secretStore: ISecretStore) {
 		super(secretStore);
 		this.auth = new GoogleDriveAuthProvider(secretStore);
+	}
+
+	get picker(): WebFolderPicker {
+		return this;
+	}
+
+	async startWebFolderPick(settings: AirSyncSettings): Promise<Record<string, unknown>> {
+		if (!this.auth.isAuthenticated(settings.backendData ?? {})) {
+			throw new Error("Connect to Google Drive first.");
+		}
+		const auth = new GoogleAuth();
+		const url = await auth.getFolderPickerAuthorizationUrl();
+		const state = auth.getAuthState() ?? "";
+		if (Platform.isMobile) {
+			window.location.href = url;
+		} else {
+			window.open(url);
+		}
+		return {
+			pendingAuthState: state,
+			pendingFolderPickState: state,
+		};
 	}
 
 	protected getData(settings: AirSyncSettings): GoogleDriveBackendData {

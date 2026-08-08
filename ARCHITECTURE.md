@@ -269,7 +269,7 @@ interface IBackendProvider {
   classifyError?(err): ErrorClassification;              // map this backend's I/O errors to a retry-policy kind
   readBackendState?(): Record<string, unknown>;          // non-secret provider/auth state to persist in backendData (no FS arg)
   resolveRemoteVault?(app, settings, vaultName, logger?): Promise<RemoteVaultResolution>;  // find/create the default vault folder
-  picker?: WebFolderPicker;          // web-hosted folder-pick flow (Google Picker); Dropbox/OneDrive pick in an in-app modal instead
+  picker?: WebFolderPicker;          // async folder-pick flow (built-in Google uses top-level OAuth); custom Google has no picker
   getRemoteVaultDisplayPath?(settings, logger?): Promise<string | null>;      // resolve the bound folder's path for settings
   clearCheckpointStore?(settings): Promise<void>;        // clear the per-target IndexedDB checkpoint without needing a live FS
   disconnect(settings): Promise<Record<string, unknown>>;
@@ -287,7 +287,7 @@ The remote delta cursor is crash-safe at the **filesystem** layer, not the provi
 
 `settings.backendData` is a single flat bag holding **only the active backend's** parameters (tokens live in `SecretStorage`, keyed per backend — never in `backendData`). Switching backends hard-resets it: all params are wiped and every registered backend's plugin-owned secrets are swept (`clearPluginSecrets`), so the new backend starts disconnected and can't reuse another's token under the wrong OAuth client.
 
-Remote-vault binding is **explicit**, not automatic on connect. After auth the user either binds the convention folder `obsidian-air-sync/<Vault Name>` (`BackendManager.bindDefaultRemoteVault` → `resolveRemoteVault`, which find-or-creates it and migrates a legacy `obsidian-air-sync/<uuid>` vault if one matches) or picks any folder via the web Google Picker (`provider.picker`: `startWebFolderPick` → `completeWebFolderPick`, bound by id; Dropbox and OneDrive use an in-app modal instead). The folder is the sole binding; there is no `.airsync/metadata.json`. See [docs/google-drive-backend.md](docs/google-drive-backend.md) for the Google Drive specifics.
+Remote-vault binding is **explicit**, not automatic on connect. After auth the user either binds the convention folder `obsidian-air-sync/<Vault Name>` (`BackendManager.bindDefaultRemoteVault` → `resolveRemoteVault`, which find-or-creates it and migrates a legacy `obsidian-air-sync/<uuid>` vault if one matches) or picks any folder via Google Picker (`provider.picker`: current built-in versions use the top-level OAuth Picker and finish through `completeWebFolderPick`; older released versions retain their hosted PickerBuilder client). Custom OAuth has no Picker and takes an explicit folder ID. Dropbox and OneDrive use an in-app modal instead. The folder is the sole binding; there is no `.airsync/metadata.json`. See [docs/google-drive-backend.md](docs/google-drive-backend.md) for the Google Drive specifics.
 
 ### IAuthProvider (fs/auth.ts)
 
@@ -309,4 +309,4 @@ The provider registry (`fs/registry.ts`) maps backend types to provider instance
 - [Dropbox backend](docs/dropbox-backend.md) -- App Folder scope, id-only addressing, worker-less PKCE auth, in-app folder modal
 - [OneDrive backend](docs/onedrive-backend.md) -- App Folder scope (personal accounts), Microsoft Graph, delta-query incremental sync, locally-computed QuickXorHash, in-app folder modal
 - [Error handling](docs/error-handling.md) -- resilience: error classification, retry, rate limiting (recovery scenarios cross-reference the sync pipeline)
-- [OAuth worker & auth site](https://github.com/takezoh/air-sync-auth) -- server-side Google token exchange plus the static site (privacy/terms, the Google custom-OAuth callback, and the Google Drive Picker page), in the dedicated `air-sync-auth` repo (kept out of this plugin's tree). Dropbox no longer uses this site — its OAuth returns straight to `obsidian://air-sync-auth` and its folder pick is an in-app modal.
+- [OAuth worker & auth site](https://github.com/takezoh/obsidian-air-sync-auth) -- server-side Google token exchange plus the static site (privacy/terms, the Google custom-OAuth callback, and the legacy hosted Google Drive Picker page), in the dedicated `obsidian-air-sync-auth` repo (kept out of this plugin's tree). The worker relays current top-level Google Picker results while the hosted endpoint remains available to old plugin versions. Dropbox no longer uses this site — its OAuth returns straight to `obsidian://air-sync-auth` and its folder pick is an in-app modal.
