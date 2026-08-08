@@ -266,8 +266,6 @@ export async function requestUrl(params: RequestUrlParam): Promise<RequestUrlRes
 	const response = result as Record<string, unknown>;
 	if (
 		typeof response.status !== "number" ||
-		typeof response.text !== "string" ||
-		!(response.arrayBuffer instanceof ArrayBuffer) ||
 		typeof response.headers !== "object" ||
 		response.headers === null
 	) {
@@ -280,9 +278,23 @@ export async function requestUrl(params: RequestUrlParam): Promise<RequestUrlRes
 	return {
 		status: response.status,
 		headers,
-		arrayBuffer: response.arrayBuffer,
-		json: response.json,
-		text: response.text,
+		get arrayBuffer(): ArrayBuffer {
+			const value = response.arrayBuffer;
+			if (!(value instanceof ArrayBuffer)) {
+				throw new Error("Obsidian requestUrl returned an invalid response shape");
+			}
+			return value;
+		},
+		get json(): unknown {
+			return response.json;
+		},
+		get text(): string {
+			const value = response.text;
+			if (typeof value !== "string") {
+				throw new Error("Obsidian requestUrl returned an invalid response shape");
+			}
+			return value;
+		},
 	};
 }
 
