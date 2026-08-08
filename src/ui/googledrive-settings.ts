@@ -57,7 +57,7 @@ export class GoogleDriveSettingsRenderer implements IBackendSettingsRenderer {
 			folderSetting.setDesc(
 				"Choose where this vault syncs: use the default folder, or pick an existing one." +
 					(Platform.isMobile
-						? " On mobile, tap to open a folder and long-press to select it, then tap Insert."
+						? " On mobile, tap to open a folder and long-press to select it, then tap Insert. If the folder appears empty, switch between list and grid view."
 						: ""),
 			);
 			folderSetting
