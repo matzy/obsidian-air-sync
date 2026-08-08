@@ -3,7 +3,7 @@ import { sha256 } from "../utils/hash";
 
 /**
  * A hash of every setting that determines which paths are in sync scope
- * (`SyncOrchestrator.isExcluded`): `enableConfigSync`, `syncDotPaths`,
+ * (`SyncOrchestrator.isExcluded`): the config-sync toggles, `syncDotPaths`,
  * `ignorePatterns`, plus `configDir`/`pluginId` since `getEffectiveSyncDotPaths`/
  * `getEffectiveIgnorePatterns` fold them in when config sync is on. Compared
  * against the committed checkpoint's fingerprint so a scope-widening settings
@@ -24,6 +24,11 @@ export async function computeScopeFingerprint(
 ): Promise<string> {
 	const canonical = JSON.stringify({
 		enableConfigSync: settings.enableConfigSync,
+		syncConfigJsonFiles: settings.syncConfigJsonFiles,
+		syncConfigPlugins: settings.syncConfigPlugins,
+		syncConfigSnippets: settings.syncConfigSnippets,
+		syncConfigThemes: settings.syncConfigThemes,
+		syncConfigIcons: settings.syncConfigIcons,
 		syncDotPaths: [...settings.syncDotPaths].sort(),
 		ignorePatterns: settings.ignorePatterns,
 		configDir,

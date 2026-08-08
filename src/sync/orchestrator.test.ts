@@ -760,6 +760,69 @@ describe("SyncOrchestrator", () => {
 			expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/plugins/${TEST_PLUGIN_ID}/data.json`)).toBe(true);
 		});
 
+		it("syncs root JSON config files only when their setting is enabled", () => {
+			const settings = mockSettings();
+			settings.enableConfigSync = true;
+			settings.syncConfigJsonFiles = false;
+			const deps = createDeps({ getSettings: () => settings });
+			const orchestrator = new SyncOrchestrator(deps);
+
+			expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/app.json`)).toBe(true);
+			settings.syncConfigJsonFiles = true;
+			expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/app.json`)).toBe(false);
+			expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/workspace.json`)).toBe(true);
+			expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/workspace-mobile.json`)).toBe(true);
+		});
+
+		it.each([
+			{ syncConfigJsonFiles: false, syncConfigPlugins: false },
+			{ syncConfigJsonFiles: true, syncConfigPlugins: false },
+			{ syncConfigJsonFiles: false, syncConfigPlugins: true },
+			{ syncConfigJsonFiles: true, syncConfigPlugins: true },
+		])(
+			"classifies the active community plugin list with plugins: $syncConfigJsonFiles/$syncConfigPlugins",
+			({ syncConfigJsonFiles, syncConfigPlugins }) => {
+				const settings = mockSettings();
+				settings.enableConfigSync = true;
+				settings.syncConfigJsonFiles = syncConfigJsonFiles;
+				settings.syncConfigPlugins = syncConfigPlugins;
+				const deps = createDeps({ getSettings: () => settings });
+				const orchestrator = new SyncOrchestrator(deps);
+
+				expect(orchestrator.isExcluded(`${TEST_CONFIG_DIR}/app.json`)).toBe(
+					!syncConfigJsonFiles,
+				);
+				expect(
+					orchestrator.isExcluded(`${TEST_CONFIG_DIR}/community-plugins.json`),
+				).toBe(!syncConfigPlugins);
+				expect(
+					orchestrator.isExcluded(
+						`${TEST_CONFIG_DIR}/plugins/some-other-plugin/data.json`,
+					),
+				).toBe(!syncConfigPlugins);
+			},
+		);
+
+		it.each([
+			["snippets", "syncConfigSnippets"],
+			["themes", "syncConfigThemes"],
+			["icons", "syncConfigIcons"],
+		] as const)("syncs config %s only when its setting is enabled", (directory, setting) => {
+			const settings = mockSettings();
+			settings.enableConfigSync = true;
+			settings[setting] = false;
+			const deps = createDeps({ getSettings: () => settings });
+			const orchestrator = new SyncOrchestrator(deps);
+			const directoryPath = `${TEST_CONFIG_DIR}/${directory}`;
+			const path = `${TEST_CONFIG_DIR}/${directory}/example.css`;
+
+			expect(orchestrator.isExcluded(directoryPath)).toBe(true);
+			expect(orchestrator.isExcluded(path)).toBe(true);
+			settings[setting] = true;
+			expect(orchestrator.isExcluded(directoryPath)).toBe(false);
+			expect(orchestrator.isExcluded(path)).toBe(false);
+		});
+
 		it("never syncs this plugin's own data.json, even if the user's own ignorePatterns tries to un-ignore it", () => {
 			const settings = mockSettings();
 			settings.enableConfigSync = true;
@@ -1318,6 +1381,39 @@ describe("SyncOrchestrator", () => {
 			await orchestrator.runSync();
 
 			expect(localFs.files.has(`${TEST_CONFIG_DIR}/hotkeys.json`)).toBe(true);
+			await orchestrator.close();
+		});
+
+		it("reruns cold and pulls a remote-only snippet once its config scope is enabled", async () => {
+			const localFs = createMockFs("local");
+			const remoteFs = createMockFs("remote");
+			const path = `${TEST_CONFIG_DIR}/snippets/example.css`;
+			addFile(remoteFs, path, "css", 1000);
+
+			const settings = baseMockSettings({
+				backendType: "test",
+				vaultId: `test-${Math.random()}`,
+				enableConfigSync: true,
+				syncConfigSnippets: false,
+			});
+			remoteFs.checkpoint!.hasCheckpoint = vi.fn().mockResolvedValue(true);
+			wireScopeFingerprint(remoteFs, null);
+
+			const deps = createDeps({
+				getSettings: () => settings,
+				localFs: () => localFs,
+				remoteFs: () => remoteFs,
+				backendProvider: () => mockProvider({}),
+			});
+			const orchestrator = new SyncOrchestrator(deps);
+
+			await orchestrator.runSync();
+			expect(localFs.files.has(path)).toBe(false);
+
+			settings.syncConfigSnippets = true;
+			await orchestrator.runSync();
+
+			expect(localFs.files.has(path)).toBe(true);
 			await orchestrator.close();
 		});
 

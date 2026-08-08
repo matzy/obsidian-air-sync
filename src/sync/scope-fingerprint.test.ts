@@ -52,6 +52,29 @@ describe("computeScopeFingerprint", () => {
 		expect(off).not.toBe(on);
 	});
 
+	it.each([
+		"syncConfigJsonFiles",
+		"syncConfigPlugins",
+		"syncConfigSnippets",
+		"syncConfigThemes",
+		"syncConfigIcons",
+	] as const)(
+		"changes when %s toggles",
+		async (setting) => {
+			const off = await computeScopeFingerprint(
+				mockSettings({ enableConfigSync: true, [setting]: false }),
+				".cfg",
+				"air-sync",
+			);
+			const on = await computeScopeFingerprint(
+				mockSettings({ enableConfigSync: true, [setting]: true }),
+				".cfg",
+				"air-sync",
+			);
+			expect(off).not.toBe(on);
+		},
+	);
+
 	it("changes when syncDotPaths content changes", async () => {
 		const a = await computeScopeFingerprint(mockSettings({ syncDotPaths: [] }), ".cfg", "air-sync");
 		const b = await computeScopeFingerprint(

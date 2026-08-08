@@ -15,6 +15,16 @@ export interface AirSyncSettings {
 	syncDotPaths: string[];
 	/** Enable experimental sync of Obsidian's own config directory (.obsidian/) */
 	enableConfigSync: boolean;
+	/** Include root JSON files under the Obsidian config directory */
+	syncConfigJsonFiles: boolean;
+	/** Include installed plugin files under the Obsidian config directory */
+	syncConfigPlugins: boolean;
+	/** Include CSS snippets under the Obsidian config directory */
+	syncConfigSnippets: boolean;
+	/** Include installed themes under the Obsidian config directory */
+	syncConfigThemes: boolean;
+	/** Include custom icons under the Obsidian config directory */
+	syncConfigIcons: boolean;
 	/** Maximum file size in MB to sync on mobile */
 	mobileMaxFileSizeMB: number;
 	/** Hold a screen wake lock while syncing so mobile devices don't sleep mid-sync */
@@ -52,6 +62,11 @@ export const DEFAULT_SETTINGS: AirSyncSettings = {
 	ignorePatterns: [],
 	syncDotPaths: [],
 	enableConfigSync: false,
+	syncConfigJsonFiles: true,
+	syncConfigPlugins: true,
+	syncConfigSnippets: false,
+	syncConfigThemes: false,
+	syncConfigIcons: false,
 	enableThreeWayMerge: true,
 	mobileMaxFileSizeMB: 10,
 	screenWakeLockOnSync: false,
@@ -61,6 +76,3 @@ export const DEFAULT_SETTINGS: AirSyncSettings = {
 	backendData: {},
 	lastSyncedIdentity: "",
 };
-
-
-

@@ -351,6 +351,11 @@ export function mockSettings(
 		// Mirror production DEFAULT_SETTINGS for behaviour-affecting flags so tests
 		// don't run under a configuration real users never have.
 		enableConfigSync: false,
+		syncConfigJsonFiles: true,
+		syncConfigPlugins: true,
+		syncConfigSnippets: false,
+		syncConfigThemes: false,
+		syncConfigIcons: false,
 		enableThreeWayMerge: true,
 		mobileMaxFileSizeMB: 10,
 		screenWakeLockOnSync: false,
