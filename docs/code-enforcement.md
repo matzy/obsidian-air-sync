@@ -177,7 +177,7 @@ are unavailable. It is a deterministic CI contract, not a replacement for
 |---|---|
 | **Prevents** | Misdiagnosing a declaration-resolution failure as hundreds of independent source defects; weakening the five unsafe rules while normal lint happens to stay green |
 | **Where** | `vendor-types/`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
-| **How** | Resolves all production source through committed declaration snapshots. The normal workspace must have zero unsafe findings and TypeScript must resolve all nine target packages only from `vendor-types`. The injected workspace changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
+| **How** | Resolves all production source through committed declaration snapshots. The current candidate workspace must have zero unsafe findings and TypeScript must resolve all nine target packages only from `vendor-types`. A pre-fix baseline changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
 | **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
 
 `vendor-types/snapshot-manifest.json` pins the version, lockfile integrity, SPDX
@@ -189,9 +189,10 @@ lockfile metadata, hashes, and `tsconfig` paths. Third-party snapshots are exclu
 from project style lint for the same reason as `node_modules`; parity is enforced by
 this stronger provenance gate, while all first-party source remains linted.
 
-The injected ESLint process intentionally exits **1** because it found the expected
-diagnostics. The wrapper exits **0** only after its negative classifier tests pass,
-normal ESLint exits 0, injected ESLint exits exactly 1, the effective configs match,
+The pre-fix baseline ESLint process intentionally exits **1** because it found the
+historical diagnostics. The wrapper exits **0** only after its negative classifier
+tests pass, the current candidate exits 0 with zero unsafe findings, the pre-fix
+baseline exits exactly 1, the effective configs match,
 all dependency-specific file/rule relationships are present, and the negative control
 still produces at least 1,000 unsafe findings. An injected exit of 0, 2, or no exit
 status is treated as a broken reproduction or tool failure, not success.
@@ -207,12 +208,13 @@ The same command runs an esbuild metafile probe for fflate, ignore, js-md5, and
 node-diff3. It fails if `tsconfig` paths hijack a runtime import to a `.d.ts` snapshot
 or if the bundle no longer contains each package's JavaScript implementation.
 
-The all-untyped control currently reproduces 1,402 unsafe diagnostics. That exact
+The all-untyped pre-fix control currently reproduces roughly 1,400 unsafe diagnostics. That exact
 total and line numbers are not contractual; the coarse lower bound and relational
 sentinels prevent the negative control from collapsing into a small synthetic sample.
-If normal lint and the normal repro side are green while only the injected side shows
-the pinned cascade, the evidence points to declaration/type resolution. If the normal
-side also reports unsafe findings, treat that as a source defect. If the wrapper
+If normal lint and the current candidate side are green while only the pre-fix side
+shows the pinned cascade, the fix is confirmed at the declaration/type-resolution
+boundary. If the current candidate also reports unsafe findings, the command fails and
+the fix is incomplete. If the wrapper
 reports config, spawn, JSON, or exit-status failure, fix the runner/toolchain path
 before drawing either conclusion.
 

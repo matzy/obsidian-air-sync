@@ -125,7 +125,7 @@ export function verifyVendorSnapshots(projectRoot) {
 			}
 		}
 
-		const expectedPath = `../${snapshot.declarationSnapshot}`;
+		const expectedPath = `./${snapshot.declarationSnapshot}`;
 		if (!sameJson(tsconfig.compilerOptions.paths?.[snapshot.package], [expectedPath])) {
 			throw new Error(
 				`tsconfig paths for ${snapshot.package} must point only to ${expectedPath}`,
@@ -183,7 +183,7 @@ function injectUntypedBoundary(projectRoot, workspace) {
 	const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
 	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
 		tsconfig.compilerOptions.paths[packageName] = [
-			"../test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
+			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
 		];
 	}
 	writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, "\t")}\n`);
@@ -216,7 +216,7 @@ function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
 	const expectedInjectedTsconfig = structuredClone(normal.tsconfig);
 	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
 		expectedInjectedTsconfig.compilerOptions.paths[packageName] = [
-			"../test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
+			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
 		];
 	}
 	if (JSON.stringify(injected.tsconfig) !== JSON.stringify(expectedInjectedTsconfig)) {

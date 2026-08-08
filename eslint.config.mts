@@ -1,7 +1,9 @@
 import tseslint from 'typescript-eslint';
 import obsidianmd from "eslint-plugin-obsidianmd";
 import globals from "globals";
-import { globalIgnores } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
+
+const configRoot = decodeURIComponent(new URL(".", import.meta.url).pathname);
 
 // ---------------------------------------------------------------------------
 // Design-principle guards (see ARCHITECTURE.md "Design principles").
@@ -116,7 +118,7 @@ const NO_MANUAL_CONTENT_LENGTH = {
 		"Do not set Content-Length manually — Obsidian's requestUrl (Electron net) computes it and throws net::ERR_INVALID_ARGUMENT when it is hand-set. Remove the header.",
 };
 
-export default tseslint.config(
+export default defineConfig(
 	{
 		languageOptions: {
 			globals: {
@@ -145,7 +147,7 @@ export default tseslint.config(
 						'vitest.config.ts'
 					]
 				},
-				tsconfigRootDir: import.meta.dirname,
+				tsconfigRootDir: configRoot,
 				extraFileExtensions: ['.json']
 			},
 		},

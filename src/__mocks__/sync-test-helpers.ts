@@ -267,7 +267,7 @@ export function makeFile(
 	content: string,
 	mtime = 1000,
 ): { entity: FileEntity; content: ArrayBuffer } {
-	const buf = new TextEncoder().encode(content).buffer as ArrayBuffer;
+	const buf = new TextEncoder().encode(content).buffer;
 	return {
 		entity: {
 			path,
@@ -290,7 +290,7 @@ export function addFile(
 	// Seed under the same canonical key the FS methods look up by, so a
 	// non-normalized path (e.g. "/a.md") can't become invisible to stat()/read().
 	path = normalizeSyncPath(path);
-	const buf = new TextEncoder().encode(text).buffer as ArrayBuffer;
+	const buf = new TextEncoder().encode(text).buffer;
 	// Ensure parent directories exist
 	const parentPath = path.substring(0, path.lastIndexOf("/"));
 	if (parentPath) {

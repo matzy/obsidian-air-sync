@@ -80,8 +80,8 @@ function validContrast(overrides = {}) {
 test("accepts the valid normal/injected contrast", () => {
 	assert.deepEqual(classifyLintBotContrast(validContrast()), {
 		ok: true,
-		code: "contrast-confirmed",
-		message: `contrast confirmed: ${MINIMUM_INJECTED_UNSAFE_FINDINGS} injected unsafe diagnostics`,
+		code: "fix-confirmed",
+		message: `fix confirmed: current candidate has 0 unsafe diagnostics; pre-fix dependency baseline reproduces ${MINIMUM_INJECTED_UNSAFE_FINDINGS}`,
 	});
 });
 

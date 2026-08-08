@@ -14,7 +14,7 @@ function makeFolder(overrides: Partial<GoogleDriveFile> & { id: string; name: st
 const ROOT = "root-id";
 
 function makeCache(logger?: Parameters<typeof GoogleDriveMetadataCache.prototype.applyFileChange>[0] extends GoogleDriveFile ? never : unknown) {
-	return new GoogleDriveMetadataCache(ROOT, logger as never);
+	return new GoogleDriveMetadataCache(ROOT, logger);
 }
 
 // ── static parentPath ──

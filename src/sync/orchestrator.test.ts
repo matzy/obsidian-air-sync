@@ -1301,7 +1301,7 @@ describe("SyncOrchestrator", () => {
 				remoteFs: () => remoteFs,
 				backendProvider: () =>
 					mockProvider({
-						readBackendState: readBackendState as unknown as import("../fs/backend").IBackendProvider["readBackendState"],
+						readBackendState: readBackendState,
 					}),
 			});
 			const orchestrator = new SyncOrchestrator(deps);

@@ -106,7 +106,7 @@ describe("DropboxClient.upload", () => {
 	it("sends overwrite mode, second-precision client_modified, and octet-stream body", async () => {
 		const spy = (await spyRequestUrl()).mockResolvedValue(mockRes(dbxFile("5", "/root/note.md")));
 		const client = await makeClient();
-		const content = new TextEncoder().encode("hello").buffer as ArrayBuffer;
+		const content = new TextEncoder().encode("hello").buffer;
 		const entry = await client.upload("/root/note.md", content, 1_700_000_000_000);
 
 		const opts = spy.mock.calls[0]![0] as RequestUrlParam;
@@ -140,7 +140,7 @@ describe("DropboxClient.upload", () => {
 
 describe("DropboxClient.download", () => {
 	it("POSTs to the content host with the path arg and returns the body bytes", async () => {
-		const buf = new TextEncoder().encode("data").buffer as ArrayBuffer;
+		const buf = new TextEncoder().encode("data").buffer;
 		const spy = (await spyRequestUrl()).mockResolvedValue(mockRes(undefined, { arrayBuffer: buf }));
 		const client = await makeClient();
 		const out = await client.download("/root/x.md");

@@ -8,7 +8,6 @@ import {
 	createMockStateStore,
 	addFile,
 } from "../__mocks__/sync-test-helpers";
-import type { SyncStateStore } from "./state";
 import type { MixedEntity, SyncRecord } from "./types";
 import type { FileEntity } from "../fs/types";
 import { sha256 } from "../utils/hash";
@@ -45,7 +44,7 @@ function baselineRecord(path: string, hash = "h"): SyncRecord {
 
 /** SHA-256 of CONTENT — a baseline reflects the hash of the content it was synced from. */
 function contentHash(): Promise<string> {
-	return sha256(new TextEncoder().encode(CONTENT).buffer as ArrayBuffer);
+	return sha256(new TextEncoder().encode(CONTENT).buffer);
 }
 
 describe("§2-1 (fixed): a lone deletion is no longer silently aborted", () => {
@@ -79,7 +78,7 @@ describe("§2-1 (fixed): a lone deletion is no longer silently aborted", () => {
 				localFs,
 				remoteFs,
 				committer: {
-					stateStore: stateStore as unknown as SyncStateStore,
+					stateStore: stateStore,
 				},
 				conflictStrategy: "auto_merge",
 			},

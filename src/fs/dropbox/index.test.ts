@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function bytes(text: string): ArrayBuffer {
-	return new TextEncoder().encode(text).buffer as ArrayBuffer;
+	return new TextEncoder().encode(text).buffer;
 }
 
 async function makeFs(rootFolderId = "id:root") {

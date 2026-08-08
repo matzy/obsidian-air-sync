@@ -10,7 +10,7 @@ vi.stubGlobal("document", { visibilityState: "visible" as string });
 
 import { SyncScheduler } from "./scheduler";
 import type { SyncSchedulerDeps } from "./scheduler";
-import type { EventRef, TAbstractFile } from "obsidian";
+import type { TAbstractFile } from "obsidian";
 import { LocalChangeTracker } from "./local-tracker";
 import {
 	createMockFs,
@@ -52,7 +52,7 @@ function createDeps(
 		workspace: {
 			on: vi.fn((event: string, handler: WorkspaceHandler) => {
 				workspaceHandlers.set(event, handler);
-				return {} as EventRef;
+				return {};
 			}),
 			get layoutReady() {
 				return layoutReady;
@@ -65,7 +65,7 @@ function createDeps(
 		vault: {
 			on: vi.fn((event: string, handler: WorkspaceHandler) => {
 				vaultHandlers.set(event, handler);
-				return {} as EventRef;
+				return {};
 			}),
 		} as unknown as SyncSchedulerDeps["vault"],
 		localFs: () => createMockFs("local"),

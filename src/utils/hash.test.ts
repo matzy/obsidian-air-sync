@@ -3,7 +3,7 @@ import { sha1, sha256, digest, dropboxContentHash, isLocallyComputable } from ".
 import { quickXorHashBase64 } from "./quickxor";
 
 function buf(s: string): ArrayBuffer {
-	return new TextEncoder().encode(s).buffer as ArrayBuffer;
+	return new TextEncoder().encode(s).buffer;
 }
 
 /** 4 MiB — the Dropbox content-hash block size. */

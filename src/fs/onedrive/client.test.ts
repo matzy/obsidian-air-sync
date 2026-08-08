@@ -78,7 +78,7 @@ describe("OneDriveClient.fetchDelta", () => {
 describe("OneDriveClient.download", () => {
 	it("reads @microsoft.graph.downloadUrl, then GETs it WITHOUT a bearer (avoids the /content 302 401)", async () => {
 		const DOWNLOAD_URL = "https://cdn.example.com/blob?sig=presigned";
-		const buf = new TextEncoder().encode("data").buffer as ArrayBuffer;
+		const buf = new TextEncoder().encode("data").buffer;
 		const spy = (await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
 			const o = typeof opts === "string" ? { url: opts } : opts;
 			if (o.url === DOWNLOAD_URL) return Promise.resolve(mockRes(undefined, { arrayBuffer: buf }));
@@ -115,7 +115,7 @@ describe("OneDriveClient.upload (simple)", () => {
 			return Promise.resolve(mockRes(odFile("f5", "note.md", ROOT)));
 		});
 		const client = await makeClient();
-		const content = new TextEncoder().encode("hello").buffer as ArrayBuffer;
+		const content = new TextEncoder().encode("hello").buffer;
 		const item = await client.upload(ROOT, "note.md", content, 1_700_000_000_000);
 
 		const put = calls.find((c) => c.method === "PUT")!;

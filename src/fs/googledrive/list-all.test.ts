@@ -7,7 +7,7 @@ const instantSleep = () => Promise.resolve();
 
 /** Build a GoogleDriveFileList from a minimal file spec (test double). */
 function fileList(files: Array<{ id: string; name: string; mimeType: string }>): GoogleDriveFileList {
-	return { files: files.map((f) => ({ ...f, parents: ["root"] })) } as unknown as GoogleDriveFileList;
+	return { files: files.map((f) => ({ ...f, parents: ["root"] })) };
 }
 
 describe("listAllFiles (adaptive full-scan listing)", () => {

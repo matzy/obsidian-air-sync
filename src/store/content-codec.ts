@@ -2,8 +2,8 @@ import { deflateSync as rawDeflateSync, inflateSync as rawInflateSync } from "ff
 
 // fflate's exposed type can drift across toolchains. Narrow the runtime result
 // explicitly so typed-lint never depends on how that generic resolves.
-function expectUint8Array(value: unknown, op: string): Uint8Array {
-	if (value instanceof Uint8Array) return value;
+function expectUint8Array(value: unknown, op: string): Uint8Array<ArrayBuffer> {
+	if (value instanceof Uint8Array) return Uint8Array.from(value);
 	throw new Error(`fflate ${op} returned a non-Uint8Array result`);
 }
 
@@ -42,10 +42,7 @@ export function decodeContent(buf: ArrayBuffer): ArrayBuffer {
 	const format = bytes[0];
 	const body = bytes.subarray(1);
 	if (format === FORMAT_DEFLATE) {
-		// fflate returns a fresh, offset-0, exactly-sized Uint8Array, so its
-		// `.buffer.slice(0)` preserves a standalone ArrayBuffer type across
-		// toolchains whose DOM libs widen `.buffer` to ArrayBufferLike.
-		return expectUint8Array(rawInflateSync(body), "inflateSync").buffer.slice(0);
+		return expectUint8Array(rawInflateSync(body), "inflateSync").buffer;
 	}
 	if (format === FORMAT_RAW) {
 		// .slice() copies the subarray into a standalone buffer so the returned

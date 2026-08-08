@@ -138,7 +138,7 @@ export function classifyLintBotContrast({ normal, injected }) {
 	}
 	return {
 		ok: true,
-		code: "contrast-confirmed",
-		message: `contrast confirmed: ${unsafeCount} injected unsafe diagnostics`,
+		code: "fix-confirmed",
+		message: `fix confirmed: current candidate has 0 unsafe diagnostics; pre-fix dependency baseline reproduces ${unsafeCount}`,
 	};
 }

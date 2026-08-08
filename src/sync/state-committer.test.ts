@@ -191,7 +191,7 @@ describe("commitAction", () => {
 		} as unknown as Logger;
 
 		await commitAction(action, local, remote, {
-			stateStore: stateStore as unknown as SyncStateStore,
+			stateStore: stateStore,
 			localFs: failingLocalFs,
 			enableThreeWayMerge: true,
 			logger,

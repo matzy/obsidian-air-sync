@@ -12,7 +12,7 @@ import { quickXorHashBase64 } from "./quickxor";
 
 /** Regenerate a deterministic sample identically to how the golden was produced. */
 function sample(kind: "text" | "ramp" | "lcg", n: number): ArrayBuffer {
-	if (kind === "text") return new TextEncoder().encode("hello sha1 casing probe").buffer as ArrayBuffer;
+	if (kind === "text") return new TextEncoder().encode("hello sha1 casing probe").buffer;
 	const b = new Uint8Array(n);
 	if (kind === "ramp") for (let i = 0; i < n; i++) b[i] = i & 0xff;
 	else for (let i = 0; i < n; i++) b[i] = (i * 31 + 7) & 0xff;

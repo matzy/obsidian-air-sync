@@ -3,7 +3,6 @@ import { executePlan, toConflictRecords, DESKTOP_TRANSFER_POOL, MOBILE_TRANSFER_
 import type { ExecutionContext, ResolvedConflict } from "./plan-executor";
 import type { SyncAction, SyncPlan } from "./types";
 import { createMockFs, createMockStateStore, addFile, readText, deferred, flush } from "../__mocks__/sync-test-helpers";
-import type { SyncStateStore } from "./state";
 import { AuthError, classifyHttpError } from "../fs/errors";
 import { AdaptivePool } from "../queue/async-queue";
 
@@ -17,7 +16,7 @@ function makeCtx(
 		localFs,
 		remoteFs,
 		committer: {
-			stateStore: stateStore as unknown as SyncStateStore,
+			stateStore: stateStore,
 		},
 		conflictStrategy: "auto_merge",
 		classifyError: classifyHttpError,
