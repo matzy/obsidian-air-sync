@@ -1,5 +1,5 @@
 import type { App } from "../platform/obsidian";
-import { Notice, SecretComponent, Setting } from "../platform/obsidian";
+import { Notice, Platform, SecretComponent, Setting } from "../platform/obsidian";
 import type { AirSyncSettings } from "../settings";
 import type {
 	BackendConnectionActions,
@@ -55,7 +55,10 @@ export class GoogleDriveSettingsRenderer implements IBackendSettingsRenderer {
 			// pick an existing one. Binding only happens on an explicit choice here.
 			const defaultPath = `${REMOTE_VAULT_ROOT}/${app.vault.getName()}`;
 			folderSetting.setDesc(
-				"Choose where this vault syncs: use the default folder, or pick an existing one.",
+				"Choose where this vault syncs: use the default folder, or pick an existing one." +
+					(Platform.isMobile
+						? " On mobile, tap to open a folder and long-press to select it, then tap Insert."
+						: ""),
 			);
 			folderSetting
 				.addButton((button) =>
