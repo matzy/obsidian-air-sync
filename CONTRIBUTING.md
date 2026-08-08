@@ -42,11 +42,16 @@ a minified production `main.js`. No environment variables are required to build.
 Every change must pass the same gate CI enforces:
 
 ```bash
-npm run lint && npm run build && npm test
+npm run lint && npm run lint:bot-repro && npm run build && npm test
 ```
 
 - `npm run lint` — ESLint (`--max-warnings 0`), including the `eslint-plugin-obsidianmd`
   ruleset the community submission bot runs.
+- `npm run lint:bot-repro` — lints production source both with installed dependency
+  declarations and with the five runtime dependencies deliberately made untyped.
+  Both passes must report zero `@typescript-eslint/no-unsafe-*` findings. This models
+  the community Dashboard source scan, which may analyse a submitted commit without
+  resolving dependency declarations; a clean `npm run lint` alone is not sufficient.
 - `npm run build` — `tsc -noEmit` (strict) + esbuild bundle.
 - `npm test` — Vitest. `npm run test:coverage` enforces ratchet coverage floors; raise
   them as coverage improves, never lower them.
@@ -80,8 +85,8 @@ disabling a rule.
 
 - Branch off `main` and open PRs against `main`.
 - Keep PRs focused, and describe the user-facing change and the reasoning behind it.
-- Ensure the check gate above passes locally — CI runs lint, build, and coverage on
-  Node 20 and 22 for every push and PR.
+- Ensure the check gate above passes locally — CI runs lint, the community-bot
+  reproduction, build, and coverage on Node 20 and 22 for every push and PR.
 - Command IDs are immutable once shipped (`main-commands.test.ts` snapshots them); add
   a new ID for new commands rather than renaming an existing one.
 

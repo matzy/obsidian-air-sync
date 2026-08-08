@@ -24,6 +24,7 @@ npm run build      # Production build (tsc -noEmit -skipLibCheck && node esbuild
 npm test           # vitest
 npm run test:watch # vitest watch
 npm run lint       # eslint --max-warnings 0
+npm run lint:bot-repro # community Dashboard source scan with dependency types present/absent
 npm run test:e2e   # opt-in e2e vs real Google Drive/Dropbox/OneDrive (creds-gated; NOT in the gate/CI; backends run in parallel — see docs/e2e-testing.md)
 npm run test:e2e:google   # …only Google Drive
 npm run test:e2e:dropbox  # …only Dropbox
@@ -32,10 +33,11 @@ npm run test:e2e:onedrive # …only OneDrive
 
 ## The gate
 
-Always pass `npm run lint && npm run build && npm test` after making changes. The lint
-step includes `eslint-plugin-obsidianmd` — the same ruleset the community submission
-bot runs — so it must be green before pushing. The full set of enforced rules, the
-test-pinned principles, and how to declare an exception live in
+Always pass `npm run lint && npm run lint:bot-repro && npm run build && npm test` after
+making changes. `npm run lint` includes `eslint-plugin-obsidianmd`; `lint:bot-repro`
+also verifies production source when external dependency declarations are unavailable,
+matching the community Dashboard failure mode. Both must be green before pushing. The
+full set of enforced rules, the test-pinned principles, and how to declare an exception live in
 [docs/code-enforcement.md](docs/code-enforcement.md). **Fix the code rather than
 disabling a rule.**
 
@@ -102,7 +104,7 @@ Steps:
    - `package.json` → `version`
    - `package-lock.json` → both `version` fields (root and `packages.""`)
    - `versions.json` → add a `"x.y.z": "<minAppVersion>"` entry by hand (the `npm version` / `version-bump.mjs` script only adds it when `minAppVersion` changes, so it won't for a same-minAppVersion bump)
-2. Gate: `npm run lint && npm run build && npm test` must all pass before tagging.
+2. Gate: `npm run lint && npm run lint:bot-repro && npm run build && npm test` must all pass before tagging.
 3. Commit as `Bump version to x.y.z`, push to `main`.
 4. Tag `x.y.z` (must match the version exactly, no `v` prefix) and push the tag — this fires the release workflow.
 5. After the run finishes (`gh run watch <id>`), attach notes: `gh release edit x.y.z --notes-file <file>`.

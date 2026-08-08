@@ -9,12 +9,12 @@ The design principles themselves are owned by [ARCHITECTURE.md](../ARCHITECTURE.
 this document covers their *enforcement*. The local code gate is:
 
 ```bash
-npm run lint && npm run build && npm test
+npm run lint && npm run lint:bot-repro && npm run build && npm test
 ```
 
-CI (`.github/workflows/lint.yml`) runs `npm run build`, `npm run lint`, and
-`npm run test:coverage` on Node 20 and 22 for every push and PR. It also runs the
-offline bot-diagnostic contract described below.
+CI (`.github/workflows/lint.yml`) runs `npm run build`, `npm run lint`,
+`npm run lint:bot-repro`, and `npm run test:coverage` on Node 20 and 22 for every push
+and PR.
 
 ## 1. Type safety — no `any`
 
@@ -172,6 +172,20 @@ Every `eslint-disable` directive must carry a `-- reason` describing why.
 `@typescript-eslint/no-unsafe-*` cascade caused when external declaration boundaries
 are unavailable. It is a deterministic CI contract, not a replacement for
 `npm run lint`.
+
+This command exists because there are two different lint environments:
+
+- `npm run lint` runs after `npm ci`, so TypeScript can read declarations from
+  `node_modules`.
+- The Obsidian community Dashboard may scan submitted source without those
+  declarations. An unresolved import then becomes TypeScript's `error` type and can
+  generate hundreds of secondary unsafe-call/assignment/member/argument/return
+  findings in otherwise typed application code.
+
+The Dashboard result for the exact submitted commit remains authoritative. The local
+reproduction prevents the known dependency-resolution mismatch from returning; it
+does not substitute a previous release's score or claim that an unscanned commit has
+already passed the remote service.
 
 | | |
 |---|---|
