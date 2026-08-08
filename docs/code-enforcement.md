@@ -6,14 +6,15 @@ review. For each: what it prevents, where it is defined, how it is enforced, and
 to declare an exception.
 
 The design principles themselves are owned by [ARCHITECTURE.md](../ARCHITECTURE.md);
-this document covers their *enforcement*. The full gate is:
+this document covers their *enforcement*. The local code gate is:
 
 ```bash
 npm run lint && npm run build && npm test
 ```
 
 CI (`.github/workflows/lint.yml`) runs `npm run build`, `npm run lint`, and
-`npm run test:coverage` on Node 20 and 22 for every push and PR.
+`npm run test:coverage` on Node 20 and 22 for every push and PR. It also runs the
+offline bot-diagnostic contract described below.
 
 ## 1. Type safety — no `any`
 
@@ -164,6 +165,41 @@ Do not disable rules the obsidianmd plugin forbids — fix the code instead. The
 sanctioned escape hatch is the hardcoded-config-path rule in **tests**: assign
 `configDir` to a variable and add `// eslint-disable-line obsidianmd/hardcoded-config-path`.
 Every `eslint-disable` directive must carry a `-- reason` describing why.
+
+## 9. Offline community-bot unsafe-warning diagnostic
+
+`npm run lint:bot-repro` distinguishes a source type-safety defect from the mass
+`@typescript-eslint/no-unsafe-*` cascade caused when the Obsidian declaration boundary
+is unavailable. It is a deterministic CI contract, not a replacement for
+`npm run lint`.
+
+| | |
+|---|---|
+| **Prevents** | Misdiagnosing a declaration-resolution failure as hundreds of independent source defects; weakening the five unsafe rules while normal lint happens to stay green |
+| **Where** | `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-obsidian.d.ts` |
+| **How** | Runs the same 12 copied source targets and production `eslint.config.mts` twice with the project-local ESLint. The normal workspace must have zero unsafe findings. The injected workspace changes only the `obsidian` type-resolution boundary and must produce all five rule families plus the pinned file/rule relationships. The effective config must keep all five rules at error in both workspaces. |
+| **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
+
+The injected ESLint process intentionally exits **1** because it found the expected
+diagnostics. The wrapper exits **0** only after its negative classifier tests pass,
+normal ESLint exits 0, injected ESLint exits exactly 1, the effective configs match,
+and every required file/rule relationship is present. An injected exit of 0, 2, or
+no exit status is treated as a broken reproduction or tool failure, not success.
+
+This path never runs `npm install`, `npx`, a download, or a network request. It uses
+only `node_modules/.bin/eslint` and the ESLint API already installed from the lockfile,
+copies `src` into disposable workspaces (never symlinks it), and removes those
+workspaces on success and failure. If it reports that project-local ESLint is missing,
+restore dependencies with the normal project setup (`npm ci`) outside the repro, then
+run the command again; the repro deliberately has no download fallback.
+
+The previously observed total of 492 diagnostics was incidental, and the current
+total may change as source moves. Neither the total nor line numbers are contractual.
+If normal lint and the normal repro side are green while only the injected side shows
+the pinned cascade, the evidence points to declaration/type resolution. If the normal
+side also reports unsafe findings, treat that as a source defect. If the wrapper
+reports config, spawn, JSON, or exit-status failure, fix the runner/toolchain path
+before drawing either conclusion.
 
 ## Test-pinned principles
 

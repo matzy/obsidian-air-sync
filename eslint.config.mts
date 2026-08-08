@@ -136,8 +136,12 @@ export default tseslint.config(
 			parserOptions: {
 				projectService: {
 					allowDefaultProject: [
-						'eslint.config.js',
+						'eslint.config.mts',
+						'lint-bot-repro-classifier.mjs',
+						'lint-bot-repro.mjs',
+						'lint-bot-repro.test.mjs',
 						'manifest.json',
+						'test-fixtures/lint-bot-repro/untyped-obsidian.d.ts',
 						'vitest.config.ts'
 					]
 				},
@@ -147,6 +151,16 @@ export default tseslint.config(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		// Vitest runs these paths in Node, where browser/Obsidian DOM globals are
+		// not guaranteed. Keep the recommended browser rules enabled for shipped
+		// source while preserving every other lint rule for tests and mocks.
+		files: ["src/**/*.test.ts", "src/__mocks__/**/*.ts"],
+		rules: {
+			"obsidianmd/prefer-window-timers": "off",
+			"obsidianmd/prefer-create-el": "off",
+		},
+	},
 	{
 		// Project-wide guards: documented conventions, now enforced.
 		files: ["src/**/*.ts"],

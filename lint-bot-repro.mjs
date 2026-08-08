@@ -1,63 +1,269 @@
-import { cpSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+const { spawnSync } = process.getBuiltinModule("node:child_process");
+const { createHash } = process.getBuiltinModule("node:crypto");
+const {
+	cpSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} = process.getBuiltinModule("node:fs");
+const { createRequire } = process.getBuiltinModule("node:module");
+const { tmpdir } = process.getBuiltinModule("node:os");
+const { dirname, join, relative, resolve } = process.getBuiltinModule("node:path");
+const { fileURLToPath } = process.getBuiltinModule("node:url");
 
-const root = process.cwd();
-const tmpRoot = mkdtempSync(join(tmpdir(), "airsync-bot-lint-"));
-const targets = [
+import {
+	UNSAFE_RULE_IDS,
+	classifyLintBotContrast,
+} from "./lint-bot-repro-classifier.mjs";
+
+export const REPRO_TARGETS = [
+	"src/fs/dropbox/auth.ts",
 	"src/fs/dropbox/client.ts",
-	"src/fs/dropbox/types.ts",
-	"src/fs/googledrive/provider-base.ts",
-	"src/fs/googledrive/test-helpers.ts",
-	"src/fs/headers.ts",
-	"src/fs/onedrive/types.ts",
+	"src/fs/googledrive/auth.ts",
+	"src/fs/googledrive/auth-provider-base.ts",
+	"src/fs/googledrive/client.ts",
+	"src/fs/local/index.ts",
+	"src/fs/onedrive/client.ts",
+	"src/fs/pkce-auth-provider.ts",
 	"src/main.ts",
-	"src/utils/hash.ts",
-	"src/fs/errors.ts",
-	"src/fs/googledrive/errors.ts",
-	"src/fs/ifilesystem-contract.ts",
-	"src/store/content-codec.ts",
+	"src/ui/config-sync-settings.ts",
+	"src/ui/dropbox-settings.ts",
 	"src/ui/settings.ts",
 ];
 
-const packageSpecs = [
-	`eslint@${process.env.BOT_REPRO_ESLINT ?? "latest"}`,
-	`typescript-eslint@${process.env.BOT_REPRO_TYPESCRIPT_ESLINT ?? "latest"}`,
-	`eslint-plugin-obsidianmd@${process.env.BOT_REPRO_OBSIDIANMD ?? "latest"}`,
-	// typescript-eslint's peer range is `<6.1.0`; npm's `typescript@latest` is now
-	// on the 6/7 line, which it refuses to resolve against. Track the project's
-	// major (5.x) so the type-aware toolchain installs; override once
-	// typescript-eslint widens its peer range.
-	`typescript@${process.env.BOT_REPRO_TYPESCRIPT ?? "5"}`,
-	`@eslint/js@${process.env.BOT_REPRO_ESLINT_JS ?? "latest"}`,
-	`globals@${process.env.BOT_REPRO_GLOBALS ?? "latest"}`,
-	`obsidian@${process.env.BOT_REPRO_OBSIDIAN ?? "latest"}`,
+const COMMON_PROJECT_FILES = [
+	"package.json",
+	"eslint.config.mts",
+	"tsconfig.json",
+	"manifest.json",
 ];
+const EFFECTIVE_CONFIG_SENTINEL = "src/fs/dropbox/auth.ts";
+const UNTYPED_FIXTURE = "test-fixtures/lint-bot-repro/untyped-obsidian.d.ts";
 
-function run(cmd, args, cwd) {
-	const result = spawnSync(cmd, args, {
-		cwd,
-		stdio: "inherit",
-		env: process.env,
-	});
-	if (result.status !== 0) {
-		process.exit(result.status ?? 1);
+function hashFile(filePath) {
+	return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+function hashTree(root) {
+	const hash = createHash("sha256");
+	function visit(directory) {
+		const entries = readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+			left.name.localeCompare(right.name),
+		);
+		for (const entry of entries) {
+			const absolutePath = join(directory, entry.name);
+			const relativePath = relative(root, absolutePath).replaceAll("\\", "/");
+			if (entry.isSymbolicLink()) {
+				throw new Error(`repro source copy must not contain symlinks: ${relativePath}`);
+			}
+			hash.update(relativePath);
+			if (entry.isDirectory()) visit(absolutePath);
+			else if (entry.isFile()) hash.update(readFileSync(absolutePath));
+			else throw new Error(`unsupported source entry in repro copy: ${relativePath}`);
+		}
+	}
+	visit(root);
+	return hash.digest("hex");
+}
+
+function copyCommonProject(projectRoot, workspace) {
+	for (const file of COMMON_PROJECT_FILES) {
+		cpSync(join(projectRoot, file), join(workspace, file));
+	}
+	cpSync(join(projectRoot, "src"), join(workspace, "src"), { recursive: true });
+	if (lstatSync(join(workspace, "src")).isSymbolicLink()) {
+		throw new Error("repro source must be copied, not symlinked");
+	}
+	symlinkSync(join(projectRoot, "node_modules"), join(workspace, "node_modules"), "dir");
+}
+
+function injectUntypedBoundary(projectRoot, workspace) {
+	const fixtureDestination = join(workspace, UNTYPED_FIXTURE);
+	mkdirSync(dirname(fixtureDestination), { recursive: true });
+	cpSync(join(projectRoot, UNTYPED_FIXTURE), fixtureDestination);
+
+	const tsconfigPath = join(workspace, "tsconfig.json");
+	const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
+	tsconfig.compilerOptions.paths = {
+		...(tsconfig.compilerOptions.paths ?? {}),
+		obsidian: ["../test-fixtures/lint-bot-repro/untyped-obsidian.d.ts"],
+	};
+	writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, "\t")}\n`);
+}
+
+function workspaceDescriptor(workspace) {
+	return {
+		sourceHash: hashTree(join(workspace, "src")),
+		configHash: hashFile(join(workspace, "eslint.config.mts")),
+		manifestHash: hashFile(join(workspace, "manifest.json")),
+		packageHash: hashFile(join(workspace, "package.json")),
+		tsconfig: JSON.parse(readFileSync(join(workspace, "tsconfig.json"), "utf8")),
+		targets: [...REPRO_TARGETS],
+	};
+}
+
+function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
+	const normal = workspaceDescriptor(normalWorkspace);
+	const injected = workspaceDescriptor(injectedWorkspace);
+	for (const key of ["sourceHash", "configHash", "manifestHash", "packageHash"]) {
+		if (normal[key] !== injected[key]) {
+			throw new Error(`normal/injected workspace mismatch outside type boundary: ${key}`);
+		}
+	}
+	if (JSON.stringify(normal.targets) !== JSON.stringify(injected.targets)) {
+		throw new Error("normal/injected workspace target lists differ");
+	}
+
+	const expectedInjectedTsconfig = structuredClone(normal.tsconfig);
+	expectedInjectedTsconfig.compilerOptions.paths = {
+		...(expectedInjectedTsconfig.compilerOptions.paths ?? {}),
+		obsidian: ["../test-fixtures/lint-bot-repro/untyped-obsidian.d.ts"],
+	};
+	if (JSON.stringify(injected.tsconfig) !== JSON.stringify(expectedInjectedTsconfig)) {
+		throw new Error(
+			"injected workspace may differ only by the obsidian untyped declaration path",
+		);
+	}
+	if (!existsSync(join(injectedWorkspace, UNTYPED_FIXTURE))) {
+		throw new Error(`injected workspace is missing ${UNTYPED_FIXTURE}`);
+	}
+
+	return {
+		sourceHash: normal.sourceHash,
+		configHash: normal.configHash,
+		targetCount: normal.targets.length,
+	};
+}
+
+function resolveLocalEslintBinary(projectRoot) {
+	const binaryPath = join(projectRoot, "node_modules", ".bin", "eslint");
+	if (!existsSync(binaryPath)) {
+		throw new Error(
+			`project-local ESLint is missing at ${binaryPath}; run npm ci outside this offline gate, then retry (no download fallback is permitted)`,
+		);
+	}
+	return binaryPath;
+}
+
+function severityOf(ruleSetting) {
+	const severity = Array.isArray(ruleSetting) ? ruleSetting[0] : ruleSetting;
+	if (severity === 2 || severity === "error") return "error";
+	if (severity === 1 || severity === "warn") return "warn";
+	return "off";
+}
+
+function loadLocalEslintApi(projectRoot) {
+	try {
+		const requireFromProject = createRequire(join(projectRoot, "package.json"));
+		const eslintModule = requireFromProject("eslint");
+		if (typeof eslintModule.ESLint !== "function") {
+			throw new TypeError("the local eslint package does not export ESLint");
+		}
+		return eslintModule.ESLint;
+	} catch (error) {
+		throw new Error(
+			`project-local ESLint API could not be loaded from ${join(projectRoot, "node_modules")}: ${error.message}`,
+			{ cause: error },
+		);
 	}
 }
 
-try {
-	for (const file of ["package.json", "eslint.config.mts", "tsconfig.json", "manifest.json"]) {
-		cpSync(resolve(root, file), resolve(tmpRoot, file));
+async function assertEffectiveConfig(projectRoot, normalWorkspace, injectedWorkspace) {
+	const ESLint = loadLocalEslintApi(projectRoot);
+	const configurations = [];
+	for (const workspace of [normalWorkspace, injectedWorkspace]) {
+		const eslint = new ESLint({
+			cwd: workspace,
+			overrideConfigFile: join(workspace, "eslint.config.mts"),
+		});
+		const config = await eslint.calculateConfigForFile(join(workspace, EFFECTIVE_CONFIG_SENTINEL));
+		if (!config) {
+			throw new Error(`ESLint returned no effective config for ${EFFECTIVE_CONFIG_SENTINEL}`);
+		}
+		const ruleSettings = Object.fromEntries(
+			UNSAFE_RULE_IDS.map((ruleId) => [ruleId, config.rules?.[ruleId]]),
+		);
+		for (const [ruleId, setting] of Object.entries(ruleSettings)) {
+			if (severityOf(setting) !== "error") {
+				throw new Error(
+					`effective config must keep ${ruleId} at error for ${EFFECTIVE_CONFIG_SENTINEL}`,
+				);
+			}
+		}
+		configurations.push(ruleSettings);
 	}
-	symlinkSync(resolve(root, "src"), resolve(tmpRoot, "src"), "dir");
+	if (JSON.stringify(configurations[0]) !== JSON.stringify(configurations[1])) {
+		throw new Error("normal/injected effective configs differ for the five unsafe rules");
+	}
+}
 
-	run("npm", ["install", "--package-lock=false", "--no-save", ...packageSpecs], tmpRoot);
-	// NOT --quiet: the community submission bot surfaces warn-level rules too
-	// (e.g. prefer-create-el, settings-tab/prefer-setting-definitions), so the
-	// repro must fail on warnings, not just errors. --max-warnings 0 makes any
-	// finding on a curated target a non-zero exit.
-	run("npx", ["eslint", "--max-warnings", "0", ...targets], tmpRoot);
-} finally {
-	rmSync(tmpRoot, { recursive: true, force: true });
+function runEslint(binaryPath, workspace, spawn) {
+	const result = spawn(binaryPath, ["--format", "json", ...REPRO_TARGETS], {
+		cwd: workspace,
+		encoding: "utf8",
+		env: { ...process.env, ESLINT_USE_FLAT_CONFIG: "true" },
+	});
+	if (result.error) {
+		throw new Error(`failed to start project-local ESLint at ${binaryPath}: ${result.error.message}`);
+	}
+	if (typeof result.stdout !== "string") {
+		throw new Error(`project-local ESLint at ${binaryPath} returned no JSON stdout`);
+	}
+	if (result.status !== 0 && result.status !== 1 && result.stderr) {
+		throw new Error(
+			`project-local ESLint failed as a tool (exit ${String(result.status)}): ${result.stderr.trim()}`,
+		);
+	}
+	return { exitStatus: result.status, eslintJson: result.stdout };
+}
+
+export async function runLintBotReproduction({
+	projectRoot = process.cwd(),
+	spawn = spawnSync,
+	verifyEffectiveConfig = assertEffectiveConfig,
+	onWorkspaceCreated = () => {},
+} = {}) {
+	const tempRoot = mkdtempSync(join(tmpdir(), "airsync-bot-lint-"));
+	onWorkspaceCreated(tempRoot);
+	try {
+		const binaryPath = resolveLocalEslintBinary(projectRoot);
+		const normalWorkspace = join(tempRoot, "normal");
+		const injectedWorkspace = join(tempRoot, "injected");
+		mkdirSync(normalWorkspace);
+		mkdirSync(injectedWorkspace);
+		copyCommonProject(projectRoot, normalWorkspace);
+		copyCommonProject(projectRoot, injectedWorkspace);
+		injectUntypedBoundary(projectRoot, injectedWorkspace);
+		const descriptor = assertWorkspaceContract(normalWorkspace, injectedWorkspace);
+		await verifyEffectiveConfig(projectRoot, normalWorkspace, injectedWorkspace);
+
+		const normal = runEslint(binaryPath, normalWorkspace, spawn);
+		const injected = runEslint(binaryPath, injectedWorkspace, spawn);
+		const classification = classifyLintBotContrast({ normal, injected });
+		if (!classification.ok) {
+			throw new Error(`${classification.code}: ${classification.message}`);
+		}
+		return { classification, descriptor };
+	} finally {
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+}
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+	try {
+		const result = await runLintBotReproduction();
+		process.stdout.write(
+			`${result.classification.message}; ${result.descriptor.targetCount} targets; source/config hashes matched\n`,
+		);
+	} catch (error) {
+		process.stderr.write(`lint-bot repro failed: ${error.message}\n`);
+		process.exitCode = 1;
+	}
 }
