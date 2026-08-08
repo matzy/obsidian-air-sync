@@ -4,11 +4,16 @@ const test = process.getBuiltinModule("node:test");
 const { join } = process.getBuiltinModule("node:path");
 
 import {
+	MINIMUM_INJECTED_UNSAFE_FINDINGS,
 	REQUIRED_FILE_RULE_PAIRS,
 	UNSAFE_RULE_IDS,
 	classifyLintBotContrast,
 } from "./lint-bot-repro-classifier.mjs";
-import { REPRO_TARGETS, runLintBotReproduction } from "./lint-bot-repro.mjs";
+import {
+	REPRO_TARGETS,
+	runLintBotReproduction,
+	verifyVendorSnapshots,
+} from "./lint-bot-repro.mjs";
 
 function eslintJson(messages) {
 	const byFile = new Map();
@@ -35,13 +40,20 @@ function eslintJson(messages) {
 }
 
 function positiveInjectedMessages() {
-	return [
+	const messages = [
 		...REQUIRED_FILE_RULE_PAIRS.map(([filePath, ruleId]) => ({ filePath, ruleId })),
 		...UNSAFE_RULE_IDS.map((ruleId, index) => ({
 			filePath: `src/extra-${index}.ts`,
 			ruleId,
 		})),
 	];
+	while (messages.length < MINIMUM_INJECTED_UNSAFE_FINDINGS) {
+		messages.push({
+			filePath: "src/padded-cascade.ts",
+			ruleId: "@typescript-eslint/no-unsafe-assignment",
+		});
+	}
+	return messages;
 }
 
 function validContrast(overrides = {}) {
@@ -69,7 +81,7 @@ test("accepts the valid normal/injected contrast", () => {
 	assert.deepEqual(classifyLintBotContrast(validContrast()), {
 		ok: true,
 		code: "contrast-confirmed",
-		message: "contrast confirmed: 10 injected unsafe diagnostics",
+		message: `contrast confirmed: ${MINIMUM_INJECTED_UNSAFE_FINDINGS} injected unsafe diagnostics`,
 	});
 });
 
@@ -131,6 +143,23 @@ const fixedNegativeCases = [
 		code: "injected-exit-status",
 	})),
 ];
+
+fixedNegativeCases.push({
+	name: "small injected cascade that merely contains the sentinels",
+	input: validContrast({
+		injected: {
+			exitStatus: 1,
+			eslintJson: eslintJson([
+				...REQUIRED_FILE_RULE_PAIRS.map(([filePath, ruleId]) => ({ filePath, ruleId })),
+				...UNSAFE_RULE_IDS.map((ruleId, index) => ({
+					filePath: `src/small-${index}.ts`,
+					ruleId,
+				})),
+			]),
+		},
+	}),
+	code: "injected-cascade-too-small",
+});
 
 for (const { name, input, code } of fixedNegativeCases) {
 	test(`rejects ${name}`, () => {
@@ -198,12 +227,24 @@ test("missing local ESLint fails before spawn and cleans its temp workspace", as
 	}
 });
 
+test("official declaration snapshots match versions, licenses, lock integrity, and bytes", () => {
+	assert.deepEqual(verifyVendorSnapshots(process.cwd()), {
+		packageCount: 9,
+		shimCount: 0,
+		message:
+			"9 official declaration/license snapshots match installed packages and lockfile metadata byte-for-byte; 0 handwritten shims",
+	});
+});
+
 test("success uses only the project-local binary, copied source, and cleans up", async () => {
 	const projectRoot = process.cwd();
 	const expectedBinary = join(projectRoot, "node_modules", ".bin", "eslint");
 	const createdWorkspaces = [];
 	const spawnCalls = [];
 	let effectiveConfigChecks = 0;
+	let snapshotChecks = 0;
+	let resolutionChecks = 0;
+	let runtimeBundleChecks = 0;
 
 	const result = await runLintBotReproduction({
 		projectRoot,
@@ -212,6 +253,18 @@ test("success uses only the project-local binary, copied source, and cleans up",
 			effectiveConfigChecks += 1;
 			assert.equal(lstatSync(join(normalWorkspace, "src")).isSymbolicLink(), false);
 			assert.equal(lstatSync(join(injectedWorkspace, "src")).isSymbolicLink(), false);
+		},
+		verifySnapshots: () => {
+			snapshotChecks += 1;
+			return { message: "snapshot test double" };
+		},
+		verifyResolution: () => {
+			resolutionChecks += 1;
+			return {};
+		},
+		verifyRuntimeBundle: () => {
+			runtimeBundleChecks += 1;
+			return [];
 		},
 		spawn: (binary, args, options) => {
 			spawnCalls.push({ binary, args, cwd: options.cwd });
@@ -236,8 +289,11 @@ test("success uses only the project-local binary, copied source, and cleans up",
 	});
 
 	assert.equal(result.classification.ok, true);
-	assert.equal(result.descriptor.targetCount, 12);
+	assert.equal(result.descriptor.targetCount, 1);
 	assert.equal(effectiveConfigChecks, 1);
+	assert.equal(snapshotChecks, 1);
+	assert.equal(resolutionChecks, 2);
+	assert.equal(runtimeBundleChecks, 1);
 	assert.equal(spawnCalls.length, 2);
 	for (const call of spawnCalls) {
 		assert.equal(call.binary, expectedBinary);

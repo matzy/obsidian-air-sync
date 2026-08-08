@@ -169,22 +169,32 @@ Every `eslint-disable` directive must carry a `-- reason` describing why.
 ## 9. Offline community-bot unsafe-warning diagnostic
 
 `npm run lint:bot-repro` distinguishes a source type-safety defect from the mass
-`@typescript-eslint/no-unsafe-*` cascade caused when the Obsidian declaration boundary
-is unavailable. It is a deterministic CI contract, not a replacement for
+`@typescript-eslint/no-unsafe-*` cascade caused when external declaration boundaries
+are unavailable. It is a deterministic CI contract, not a replacement for
 `npm run lint`.
 
 | | |
 |---|---|
 | **Prevents** | Misdiagnosing a declaration-resolution failure as hundreds of independent source defects; weakening the five unsafe rules while normal lint happens to stay green |
-| **Where** | `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-obsidian.d.ts` |
-| **How** | Runs the same 12 copied source targets and production `eslint.config.mts` twice with the project-local ESLint. The normal workspace must have zero unsafe findings. The injected workspace changes only the `obsidian` type-resolution boundary and must produce all five rule families plus the pinned file/rule relationships. The effective config must keep all five rules at error in both workspaces. |
+| **Where** | `vendor-types/`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
+| **How** | Resolves all production source through committed declaration snapshots. The normal workspace must have zero unsafe findings and TypeScript must resolve all nine target packages only from `vendor-types`. The injected workspace changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
 | **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
+
+`vendor-types/snapshot-manifest.json` pins the version, lockfile integrity, SPDX
+license, declaration SHA-256, and license SHA-256 for Obsidian, fflate, ignore,
+js-md5, node-diff3, `@codemirror/state`, `@codemirror/view`, moment, and style-mod.
+Every declaration and license is an exact official package snapshot; there are no
+hand-written shims. The gate compares installed and vendored bytes, package metadata,
+lockfile metadata, hashes, and `tsconfig` paths. Third-party snapshots are excluded
+from project style lint for the same reason as `node_modules`; parity is enforced by
+this stronger provenance gate, while all first-party source remains linted.
 
 The injected ESLint process intentionally exits **1** because it found the expected
 diagnostics. The wrapper exits **0** only after its negative classifier tests pass,
 normal ESLint exits 0, injected ESLint exits exactly 1, the effective configs match,
-and every required file/rule relationship is present. An injected exit of 0, 2, or
-no exit status is treated as a broken reproduction or tool failure, not success.
+all dependency-specific file/rule relationships are present, and the negative control
+still produces at least 1,000 unsafe findings. An injected exit of 0, 2, or no exit
+status is treated as a broken reproduction or tool failure, not success.
 
 This path never runs `npm install`, `npx`, a download, or a network request. It uses
 only `node_modules/.bin/eslint` and the ESLint API already installed from the lockfile,
@@ -193,13 +203,23 @@ workspaces on success and failure. If it reports that project-local ESLint is mi
 restore dependencies with the normal project setup (`npm ci`) outside the repro, then
 run the command again; the repro deliberately has no download fallback.
 
-The previously observed total of 492 diagnostics was incidental, and the current
-total may change as source moves. Neither the total nor line numbers are contractual.
+The same command runs an esbuild metafile probe for fflate, ignore, js-md5, and
+node-diff3. It fails if `tsconfig` paths hijack a runtime import to a `.d.ts` snapshot
+or if the bundle no longer contains each package's JavaScript implementation.
+
+The all-untyped control currently reproduces 1,402 unsafe diagnostics. That exact
+total and line numbers are not contractual; the coarse lower bound and relational
+sentinels prevent the negative control from collapsing into a small synthetic sample.
 If normal lint and the normal repro side are green while only the injected side shows
 the pinned cascade, the evidence points to declaration/type resolution. If the normal
 side also reports unsafe findings, treat that as a source defect. If the wrapper
 reports config, spawn, JSON, or exit-status failure, fix the runner/toolchain path
 before drawing either conclusion.
+
+When one of the nine packages is upgraded, copy its official declaration and license
+files from the newly locked package, then update the version, integrity, and hashes in
+`snapshot-manifest.json`. Never edit the snapshot to make a finding disappear; a byte
+parity failure means the snapshot update is incomplete.
 
 ## Test-pinned principles
 

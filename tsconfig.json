@@ -1,6 +1,17 @@
 {
 	"compilerOptions": {
 		"baseUrl": "src",
+		"paths": {
+			"obsidian": ["../vendor-types/obsidian/obsidian.d.ts"],
+			"fflate": ["../vendor-types/fflate/index.d.ts"],
+			"ignore": ["../vendor-types/ignore/index.d.ts"],
+			"js-md5": ["../vendor-types/js-md5/index.d.ts"],
+			"node-diff3": ["../vendor-types/node-diff3/diff3.d.ts"],
+			"@codemirror/state": ["../vendor-types/@codemirror/state/index.d.ts"],
+			"@codemirror/view": ["../vendor-types/@codemirror/view/index.d.ts"],
+			"moment": ["../vendor-types/moment/moment.d.ts"],
+			"style-mod": ["../vendor-types/style-mod/style-mod.d.ts"]
+		},
 		"inlineSourceMap": true,
 		"inlineSources": true,
 		"module": "ESNext",

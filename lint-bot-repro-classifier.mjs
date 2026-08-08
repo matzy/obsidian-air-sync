@@ -8,11 +8,13 @@ export const UNSAFE_RULE_IDS = [
 
 export const REQUIRED_FILE_RULE_PAIRS = [
 	["src/fs/dropbox/auth.ts", "@typescript-eslint/no-unsafe-assignment"],
-	["src/fs/dropbox/client.ts", "@typescript-eslint/no-unsafe-argument"],
-	["src/fs/googledrive/client.ts", "@typescript-eslint/no-unsafe-return"],
-	["src/fs/local/index.ts", "@typescript-eslint/no-unsafe-member-access"],
-	["src/ui/settings.ts", "@typescript-eslint/no-unsafe-call"],
+	["src/utils/ignore.ts", "@typescript-eslint/no-unsafe-member-access"],
+	["src/utils/md5.ts", "@typescript-eslint/no-unsafe-call"],
+	["src/store/content-codec.ts", "@typescript-eslint/no-unsafe-call"],
+	["src/sync/merge.ts", "@typescript-eslint/no-unsafe-argument"],
 ];
+
+export const MINIMUM_INJECTED_UNSAFE_FINDINGS = 1000;
 
 function failure(code, message) {
 	return { ok: false, code, message };
@@ -128,6 +130,12 @@ export function classifyLintBotContrast({ normal, injected }) {
 	const unsafeCount = injectedResults.findings.filter(({ ruleId }) =>
 		UNSAFE_RULE_IDS.includes(ruleId),
 	).length;
+	if (unsafeCount < MINIMUM_INJECTED_UNSAFE_FINDINGS) {
+		return failure(
+			"injected-cascade-too-small",
+			`all-untyped control produced ${unsafeCount} unsafe diagnostics; expected at least ${MINIMUM_INJECTED_UNSAFE_FINDINGS}`,
+		);
+	}
 	return {
 		ok: true,
 		code: "contrast-confirmed",

@@ -141,7 +141,7 @@ export default tseslint.config(
 						'lint-bot-repro.mjs',
 						'lint-bot-repro.test.mjs',
 						'manifest.json',
-						'test-fixtures/lint-bot-repro/untyped-obsidian.d.ts',
+						'test-fixtures/lint-bot-repro/untyped-dependencies.d.ts',
 						'vitest.config.ts'
 					]
 				},
@@ -298,6 +298,7 @@ export default tseslint.config(
 	},
 	globalIgnores([
 		"node_modules",
+		"vendor-types", // exact third-party snapshots; byte/hash parity is checked by lint:bot-repro
 		"dist",
 		"coverage",
 		"esbuild.config.mjs",
