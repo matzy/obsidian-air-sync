@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe } from "vitest";
 import { GoogleDriveClient } from "../src/fs/googledrive/client";
 import { GoogleDriveFs } from "../src/fs/googledrive/index";
-import { runIFileSystemContract } from "../src/fs/ifilesystem-contract";
+import { runIFileSystemContract } from "../src/fs/ifilesystem-contract.test";
 import {
 	createGoogleE2EAuth,
 	GOOGLE_E2E_REFRESH_TOKEN_ENV,

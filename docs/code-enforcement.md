@@ -176,18 +176,14 @@ are unavailable. It is a deterministic CI contract, not a replacement for
 | | |
 |---|---|
 | **Prevents** | Misdiagnosing a declaration-resolution failure as hundreds of independent source defects; weakening the five unsafe rules while normal lint happens to stay green |
-| **Where** | `vendor-types/`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
-| **How** | Resolves all production source through committed declaration snapshots. The current candidate workspace must have zero unsafe findings and TypeScript must resolve all nine target packages only from `vendor-types`. A pre-fix baseline changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
+| **Where** | `package-lock.json`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
+| **How** | Resolves production source through the clean-install dependency declarations pinned by the lockfile. The current candidate must have zero unsafe findings. A pre-fix baseline changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
 | **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
 
-`vendor-types/snapshot-manifest.json` pins the version, lockfile integrity, SPDX
-license, declaration SHA-256, and license SHA-256 for Obsidian, fflate, ignore,
-js-md5, node-diff3, `@codemirror/state`, `@codemirror/view`, moment, and style-mod.
-Every declaration and license is an exact official package snapshot; there are no
-hand-written shims. The gate compares installed and vendored bytes, package metadata,
-lockfile metadata, hashes, and `tsconfig` paths. Third-party snapshots are excluded
-from project style lint for the same reason as `node_modules`; parity is enforced by
-this stronger provenance gate, while all first-party source remains linted.
+Do not copy dependency declarations into the repository. The community scanner lints
+committed `.d.ts` files as source, so vendoring official declarations merely replaces
+resolution warnings with warnings inside third-party code. Dependency versions and
+their declaration files are owned by `package-lock.json` and restored with `npm ci`.
 
 The pre-fix baseline ESLint process intentionally exits **1** because it found the
 historical diagnostics. The wrapper exits **0** only after its negative classifier
@@ -205,8 +201,8 @@ restore dependencies with the normal project setup (`npm ci`) outside the repro,
 run the command again; the repro deliberately has no download fallback.
 
 The same command runs an esbuild metafile probe for fflate, ignore, js-md5, and
-node-diff3. It fails if `tsconfig` paths hijack a runtime import to a `.d.ts` snapshot
-or if the bundle no longer contains each package's JavaScript implementation.
+node-diff3. It fails if the bundle no longer contains each package's JavaScript
+implementation.
 
 The all-untyped pre-fix control currently reproduces roughly 1,400 unsafe diagnostics. That exact
 total and line numbers are not contractual; the coarse lower bound and relational
@@ -217,11 +213,6 @@ boundary. If the current candidate also reports unsafe findings, the command fai
 the fix is incomplete. If the wrapper
 reports config, spawn, JSON, or exit-status failure, fix the runner/toolchain path
 before drawing either conclusion.
-
-When one of the nine packages is upgraded, copy its official declaration and license
-files from the newly locked package, then update the version, integrity, and hashes in
-`snapshot-manifest.json`. Never edit the snapshot to make a finding disappear; a byte
-parity failure means the snapshot update is incomplete.
 
 ## Test-pinned principles
 

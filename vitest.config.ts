@@ -3,6 +3,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
+		exclude: [
+			"src/fs/ifilesystem-contract.test.ts",
+			"src/fs/ifilesystem-contract-writes.test.ts",
+			"src/fs/remote-change-detection-contract.test.ts",
+			"src/fs/caching/remote-fs-contract.test.ts",
+			"src/fs/googledrive/test-helpers.test.ts",
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html"],
@@ -23,10 +30,6 @@ export default defineConfig({
 				"src/**/*.d.ts",
 				"src/__mocks__/**",
 				"src/**/test-helpers.ts",
-				"src/fs/remote-change-detection-contract.ts",
-				"src/fs/caching/remote-fs-contract.ts",
-				"src/fs/ifilesystem-contract.ts",
-				"src/fs/ifilesystem-contract-writes.ts",
 				"src/**/types.ts",
 				"src/main.ts",
 			],

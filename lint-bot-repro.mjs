@@ -27,18 +27,6 @@ export const REPRO_TARGETS = [
 ];
 
 const DIRECT_RUNTIME_PACKAGES = ["obsidian", "fflate", "ignore", "js-md5", "node-diff3"];
-const EXPECTED_VENDOR_PACKAGES = [
-	"obsidian",
-	"fflate",
-	"ignore",
-	"js-md5",
-	"node-diff3",
-	"@codemirror/state",
-	"@codemirror/view",
-	"moment",
-	"style-mod",
-];
-
 const COMMON_PROJECT_FILES = [
 	"package.json",
 	"eslint.config.mts",
@@ -47,97 +35,9 @@ const COMMON_PROJECT_FILES = [
 ];
 const EFFECTIVE_CONFIG_SENTINEL = "src/fs/dropbox/auth.ts";
 const UNTYPED_FIXTURE = "test-fixtures/lint-bot-repro/untyped-dependencies.d.ts";
-const VENDOR_MANIFEST = "vendor-types/snapshot-manifest.json";
 
 function hashFile(filePath) {
 	return createHash("sha256").update(readFileSync(filePath)).digest("hex");
-}
-
-function readJson(filePath) {
-	return JSON.parse(readFileSync(filePath, "utf8"));
-}
-
-function sameJson(left, right) {
-	return JSON.stringify(left) === JSON.stringify(right);
-}
-
-export function verifyVendorSnapshots(projectRoot) {
-	const manifest = readJson(join(projectRoot, VENDOR_MANIFEST));
-	const lockfile = readJson(join(projectRoot, "package-lock.json"));
-	const tsconfig = readJson(join(projectRoot, "tsconfig.json"));
-	const packageNames = manifest.snapshots.map((snapshot) => snapshot.package);
-	if (!sameJson(packageNames, EXPECTED_VENDOR_PACKAGES)) {
-		throw new Error(
-			`vendor snapshot package set/order differs: expected ${EXPECTED_VENDOR_PACKAGES.join(", ")}`,
-		);
-	}
-
-	for (const snapshot of manifest.snapshots) {
-		const packagePrefix = `node_modules/${snapshot.package}/`;
-		const vendorPrefix = `vendor-types/${snapshot.package}/`;
-		if (
-			!snapshot.declarationSource.startsWith(packagePrefix) ||
-			!snapshot.declarationSource.endsWith(".d.ts") ||
-			!snapshot.declarationSnapshot.startsWith(vendorPrefix) ||
-			!snapshot.declarationSnapshot.endsWith(".d.ts") ||
-			!snapshot.licenseSource.startsWith(packagePrefix) ||
-			!snapshot.licenseSnapshot.startsWith(vendorPrefix)
-		) {
-			throw new Error(
-				`${snapshot.package} must use official node_modules sources and matching vendor-types snapshots; handwritten shims are forbidden`,
-			);
-		}
-		const installedPackagePath = join(projectRoot, "node_modules", snapshot.package, "package.json");
-		const installedPackage = readJson(installedPackagePath);
-		const lockedPackage = lockfile.packages?.[`node_modules/${snapshot.package}`];
-		if (!lockedPackage) {
-			throw new Error(`package-lock.json is missing node_modules/${snapshot.package}`);
-		}
-		if (installedPackage.version !== snapshot.version || lockedPackage.version !== snapshot.version) {
-			throw new Error(
-				`${snapshot.package} version drift: snapshot=${snapshot.version}, installed=${installedPackage.version}, lock=${lockedPackage.version}`,
-			);
-		}
-		if (lockedPackage.integrity !== snapshot.integrity) {
-			throw new Error(`${snapshot.package} lockfile integrity drift`);
-		}
-		if (installedPackage.license !== snapshot.license) {
-			throw new Error(
-				`${snapshot.package} license metadata drift: snapshot=${snapshot.license}, installed=${installedPackage.license}`,
-			);
-		}
-
-		for (const [kind, sourceField, snapshotField, hashField] of [
-			["declaration", "declarationSource", "declarationSnapshot", "declarationSha256"],
-			["license", "licenseSource", "licenseSnapshot", "licenseSha256"],
-		]) {
-			const sourcePath = join(projectRoot, snapshot[sourceField]);
-			const snapshotPath = join(projectRoot, snapshot[snapshotField]);
-			const sourceBytes = readFileSync(sourcePath);
-			const snapshotBytes = readFileSync(snapshotPath);
-			if (!sourceBytes.equals(snapshotBytes)) {
-				throw new Error(
-					`${snapshot.package} ${kind} snapshot differs byte-for-byte from ${snapshot[sourceField]}`,
-				);
-			}
-			if (hashFile(snapshotPath) !== snapshot[hashField]) {
-				throw new Error(`${snapshot.package} ${kind} SHA-256 differs from the manifest`);
-			}
-		}
-
-		const expectedPath = `./${snapshot.declarationSnapshot}`;
-		if (!sameJson(tsconfig.compilerOptions.paths?.[snapshot.package], [expectedPath])) {
-			throw new Error(
-				`tsconfig paths for ${snapshot.package} must point only to ${expectedPath}`,
-			);
-		}
-	}
-
-	return {
-		packageCount: manifest.snapshots.length,
-		shimCount: 0,
-		message: "9 official declaration/license snapshots match installed packages and lockfile metadata byte-for-byte; 0 handwritten shims",
-	};
 }
 
 function hashTree(root) {
@@ -167,7 +67,6 @@ function copyCommonProject(projectRoot, workspace) {
 		cpSync(join(projectRoot, file), join(workspace, file));
 	}
 	cpSync(join(projectRoot, "src"), join(workspace, "src"), { recursive: true });
-	cpSync(join(projectRoot, "vendor-types"), join(workspace, "vendor-types"), { recursive: true });
 	if (lstatSync(join(workspace, "src")).isSymbolicLink()) {
 		throw new Error("repro source must be copied, not symlinked");
 	}
@@ -181,6 +80,7 @@ function injectUntypedBoundary(projectRoot, workspace) {
 
 	const tsconfigPath = join(workspace, "tsconfig.json");
 	const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
+	tsconfig.compilerOptions.paths = {};
 	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
 		tsconfig.compilerOptions.paths[packageName] = [
 			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
@@ -195,7 +95,6 @@ function workspaceDescriptor(workspace) {
 		configHash: hashFile(join(workspace, "eslint.config.mts")),
 		manifestHash: hashFile(join(workspace, "manifest.json")),
 		packageHash: hashFile(join(workspace, "package.json")),
-		vendorHash: hashTree(join(workspace, "vendor-types")),
 		tsconfig: JSON.parse(readFileSync(join(workspace, "tsconfig.json"), "utf8")),
 		targets: [...REPRO_TARGETS],
 	};
@@ -204,7 +103,7 @@ function workspaceDescriptor(workspace) {
 function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
 	const normal = workspaceDescriptor(normalWorkspace);
 	const injected = workspaceDescriptor(injectedWorkspace);
-	for (const key of ["sourceHash", "configHash", "manifestHash", "packageHash", "vendorHash"]) {
+	for (const key of ["sourceHash", "configHash", "manifestHash", "packageHash"]) {
 		if (normal[key] !== injected[key]) {
 			throw new Error(`normal/injected workspace mismatch outside type boundary: ${key}`);
 		}
@@ -214,6 +113,7 @@ function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
 	}
 
 	const expectedInjectedTsconfig = structuredClone(normal.tsconfig);
+	expectedInjectedTsconfig.compilerOptions.paths = {};
 	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
 		expectedInjectedTsconfig.compilerOptions.paths[packageName] = [
 			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
@@ -231,7 +131,6 @@ function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
 	return {
 		sourceHash: normal.sourceHash,
 		configHash: normal.configHash,
-		vendorHash: normal.vendorHash,
 		targetCount: normal.targets.length,
 	};
 }
@@ -292,12 +191,8 @@ function assertTypeResolution(projectRoot, workspace, injected) {
 	if (parsed.errors.length > 0) {
 		throw new Error(`TypeScript could not parse ${configPath}`);
 	}
-	const manifest = readJson(join(workspace, VENDOR_MANIFEST));
-	const snapshots = new Map(
-		manifest.snapshots.map((snapshot) => [snapshot.package, snapshot.declarationSnapshot]),
-	);
 	const resolutions = {};
-	for (const packageName of EXPECTED_VENDOR_PACKAGES) {
+	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
 		const resolvedModule = ts.resolveModuleName(
 			packageName,
 			join(workspace, "src", "main.ts"),
@@ -307,18 +202,18 @@ function assertTypeResolution(projectRoot, workspace, injected) {
 		if (!resolvedModule) {
 			throw new Error(`TypeScript did not resolve ${packageName} in the repro workspace`);
 		}
-		const expectedPath =
-			injected && DIRECT_RUNTIME_PACKAGES.includes(packageName)
-				? join(workspace, UNTYPED_FIXTURE)
-				: join(workspace, snapshots.get(packageName));
 		const actualPath = resolve(resolvedModule.resolvedFileName);
-		if (actualPath !== resolve(expectedPath)) {
+		if (injected) {
+			const expectedPath = resolve(join(workspace, UNTYPED_FIXTURE));
+			if (actualPath !== expectedPath) {
+				throw new Error(
+					`TypeScript resolved ${packageName} to ${actualPath}; expected pre-fix fixture ${expectedPath}`,
+				);
+			}
+		} else if (!actualPath.includes(`/node_modules/${packageName}/`)) {
 			throw new Error(
-				`TypeScript resolved ${packageName} to ${actualPath}; expected repo-local ${resolve(expectedPath)}`,
+				`TypeScript resolved ${packageName} to ${actualPath}; expected installed dependency declarations`,
 			);
-		}
-		if (actualPath.includes("/node_modules/")) {
-			throw new Error(`TypeScript fell back to node_modules declarations for ${packageName}`);
 		}
 		resolutions[packageName] = relative(workspace, actualPath).replaceAll("\\", "/");
 	}
@@ -348,12 +243,6 @@ async function assertRuntimeBundleResolution(projectRoot) {
 		write: false,
 	});
 	const inputs = Object.keys(result.metafile.inputs).map((input) => input.replaceAll("\\", "/"));
-	const vendoredInputs = inputs.filter((input) => input.includes("vendor-types/"));
-	if (vendoredInputs.length > 0) {
-		throw new Error(
-			`esbuild resolved runtime imports to declaration snapshots: ${vendoredInputs.join(", ")}`,
-		);
-	}
 	for (const packageName of ["fflate", "ignore", "js-md5", "node-diff3"]) {
 		if (!inputs.some((input) => input.includes(`node_modules/${packageName}/`))) {
 			throw new Error(`esbuild bundle does not contain the runtime implementation for ${packageName}`);
@@ -415,7 +304,6 @@ export async function runLintBotReproduction({
 	projectRoot = process.cwd(),
 	spawn = spawnSync,
 	verifyEffectiveConfig = assertEffectiveConfig,
-	verifySnapshots = verifyVendorSnapshots,
 	verifyResolution = assertTypeResolution,
 	verifyRuntimeBundle = assertRuntimeBundleResolution,
 	onWorkspaceCreated = () => {},
@@ -425,7 +313,6 @@ export async function runLintBotReproduction({
 	onWorkspaceCreated(tempRoot);
 	try {
 		const binaryPath = resolveLocalEslintBinary(projectRoot);
-		const snapshotVerification = verifySnapshots(projectRoot);
 		const runtimeBundleInputs = await verifyRuntimeBundle(projectRoot);
 		const normalWorkspace = join(tempRoot, "normal");
 		const injectedWorkspace = join(tempRoot, "injected");
@@ -449,7 +336,6 @@ export async function runLintBotReproduction({
 		return {
 			classification,
 			descriptor,
-			snapshotVerification,
 			normalResolutions,
 			injectedResolutions,
 			runtimeBundleInputs,
@@ -464,7 +350,7 @@ if (isMain) {
 	try {
 		const result = await runLintBotReproduction();
 		process.stdout.write(
-			`${result.classification.message}; ${result.snapshotVerification.message}; TypeScript resolved 9/9 packages repo-locally; esbuild bundled 4/4 runtime implementations; source/config/vendor hashes matched\n`,
+			`${result.classification.message}; TypeScript resolved 5/5 dependencies from the clean install; esbuild bundled 4/4 runtime implementations; source/config hashes matched\n`,
 		);
 	} catch (error) {
 		process.stderr.write(`lint-bot repro failed: ${error.message}\n`);

@@ -4,7 +4,7 @@ import type { DropboxEntry, DropboxListFolderResponse } from "./types";
 import { DropboxFs } from "./index";
 import { untagged } from "./test-helpers";
 import { sha256 } from "../../utils/hash";
-import { runIFileSystemContract } from "../ifilesystem-contract";
+import { runIFileSystemContract } from "../ifilesystem-contract.test";
 
 vi.mock("obsidian");
 

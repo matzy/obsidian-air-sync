@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers";
+import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers.test";
 import { FOLDER_MIME } from "./types";
 import type { AirSyncSettings } from "../../settings";
 import { buildGoogleDriveFolderPickerUrl } from "./folder-picker-url";

@@ -2,7 +2,7 @@ import { vi, afterEach } from "vitest";
 import { spyRequestUrl, mockRes, odFile } from "./test-helpers";
 import type { OneDriveFsInternal } from "./test-helpers";
 import type { OneDriveItem } from "./types";
-import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../remote-change-detection-contract";
+import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../remote-change-detection-contract.test";
 
 vi.mock("obsidian");
 

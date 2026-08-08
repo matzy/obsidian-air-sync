@@ -2,7 +2,7 @@ import { vi, afterEach } from "vitest";
 import { spyRequestUrl, mockRes, dbxFile } from "./test-helpers";
 import type { DropboxFsInternal } from "./test-helpers";
 import type { DropboxEntry } from "./types";
-import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../remote-change-detection-contract";
+import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../remote-change-detection-contract.test";
 
 vi.mock("obsidian");
 

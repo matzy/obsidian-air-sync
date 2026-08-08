@@ -1,11 +1,11 @@
 import { vi, afterEach } from "vitest";
-import { spyRequestUrl, mockRes } from "./test-helpers";
-import type { GoogleDriveFsInternal } from "./test-helpers";
+import { spyRequestUrl, mockRes } from "./test-helpers.test";
+import type { GoogleDriveFsInternal } from "./test-helpers.test";
 import {
 	bytes,
 	runRemoteChangeDetectionContract,
 	statOrThrow,
-} from "../remote-change-detection-contract";
+} from "../remote-change-detection-contract.test";
 
 vi.mock("obsidian");
 

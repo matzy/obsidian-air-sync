@@ -12,7 +12,6 @@ import {
 import {
 	REPRO_TARGETS,
 	runLintBotReproduction,
-	verifyVendorSnapshots,
 } from "./lint-bot-repro.mjs";
 
 function eslintJson(messages) {
@@ -227,22 +226,12 @@ test("missing local ESLint fails before spawn and cleans its temp workspace", as
 	}
 });
 
-test("official declaration snapshots match versions, licenses, lock integrity, and bytes", () => {
-	assert.deepEqual(verifyVendorSnapshots(process.cwd()), {
-		packageCount: 9,
-		shimCount: 0,
-		message:
-			"9 official declaration/license snapshots match installed packages and lockfile metadata byte-for-byte; 0 handwritten shims",
-	});
-});
-
 test("success uses only the project-local binary, copied source, and cleans up", async () => {
 	const projectRoot = process.cwd();
 	const expectedBinary = join(projectRoot, "node_modules", ".bin", "eslint");
 	const createdWorkspaces = [];
 	const spawnCalls = [];
 	let effectiveConfigChecks = 0;
-	let snapshotChecks = 0;
 	let resolutionChecks = 0;
 	let runtimeBundleChecks = 0;
 
@@ -253,10 +242,6 @@ test("success uses only the project-local binary, copied source, and cleans up",
 			effectiveConfigChecks += 1;
 			assert.equal(lstatSync(join(normalWorkspace, "src")).isSymbolicLink(), false);
 			assert.equal(lstatSync(join(injectedWorkspace, "src")).isSymbolicLink(), false);
-		},
-		verifySnapshots: () => {
-			snapshotChecks += 1;
-			return { message: "snapshot test double" };
 		},
 		verifyResolution: () => {
 			resolutionChecks += 1;
@@ -291,7 +276,6 @@ test("success uses only the project-local binary, copied source, and cleans up",
 	assert.equal(result.classification.ok, true);
 	assert.equal(result.descriptor.targetCount, 1);
 	assert.equal(effectiveConfigChecks, 1);
-	assert.equal(snapshotChecks, 1);
 	assert.equal(resolutionChecks, 2);
 	assert.equal(runtimeBundleChecks, 1);
 	assert.equal(spawnCalls.length, 2);

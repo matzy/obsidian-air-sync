@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { spyRequestUrl, mockRes } from "./test-helpers";
+import { spyRequestUrl, mockRes } from "./test-helpers.test";
 
 vi.mock("obsidian");
 

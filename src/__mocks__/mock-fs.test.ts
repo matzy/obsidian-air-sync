@@ -1,5 +1,5 @@
 import { createMockFs } from "./sync-test-helpers";
-import { runIFileSystemContract } from "../fs/ifilesystem-contract";
+import { runIFileSystemContract } from "../fs/ifilesystem-contract.test";
 
 // The canonical in-memory test double (createMockFs) must model the same
 // IFileSystem semantics LocalFs / GoogleDriveFs do — path normalization, rename

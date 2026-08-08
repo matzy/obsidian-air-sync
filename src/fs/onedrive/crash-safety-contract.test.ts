@@ -5,8 +5,8 @@ import type { OneDriveItem, OneDriveDeltaResponse } from "./types";
 import { MetadataStore } from "../../store/metadata-store";
 import { OneDriveFs } from "./index";
 import { odFile, odFolder, odDeleted } from "./test-helpers";
-import { runCachingRemoteFsContract } from "../caching/remote-fs-contract";
-import type { CachingRemoteFsHarness } from "../caching/remote-fs-contract";
+import { runCachingRemoteFsContract } from "../caching/remote-fs-contract.test";
+import type { CachingRemoteFsHarness } from "../caching/remote-fs-contract.test";
 
 vi.mock("obsidian");
 

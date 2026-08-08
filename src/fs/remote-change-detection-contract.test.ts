@@ -5,7 +5,7 @@ import { buildSyncRecord } from "../sync/state-committer";
 
 // `bytes` lives with the IFileSystem CRUD contract (its natural home); re-exported
 // here so this suite's consumers keep a single import site.
-export { bytes } from "./ifilesystem-contract";
+export { bytes } from "./ifilesystem-contract.test";
 
 /** stat() the path and assert it exists, returning the entity. */
 export async function statOrThrow(

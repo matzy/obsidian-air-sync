@@ -5,8 +5,8 @@ import { MetadataStore } from "../../store/metadata-store";
 import { AbstractMetadataCache } from "./metadata-cache";
 import { CachingRemoteFs } from "./remote-fs";
 import type { IncrementalChangesResult } from "./remote-fs";
-import { runCachingRemoteFsContract } from "./remote-fs-contract";
-import type { CachingRemoteFsHarness } from "./remote-fs-contract";
+import { runCachingRemoteFsContract } from "./remote-fs-contract.test";
+import type { CachingRemoteFsHarness } from "./remote-fs-contract.test";
 
 // A minimal id-addressed backend over an in-memory remote. It exists only to drive
 // the shared crash-safety contract against the base machinery — proving the base is

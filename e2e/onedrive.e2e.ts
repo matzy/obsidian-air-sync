@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe } from "vitest";
 import { OneDriveAuth } from "../src/fs/onedrive/auth";
 import { OneDriveClient } from "../src/fs/onedrive/client";
 import { OneDriveFs } from "../src/fs/onedrive/index";
-import { runIFileSystemContract } from "../src/fs/ifilesystem-contract";
+import { runIFileSystemContract } from "../src/fs/ifilesystem-contract.test";
 import { readCreds } from "./helpers/env";
 import {
 	cleanupOneDriveParent,

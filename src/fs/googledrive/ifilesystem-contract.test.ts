@@ -4,7 +4,7 @@ import type { GoogleDriveFile } from "./types";
 import { FOLDER_MIME } from "./types";
 import { GoogleDriveFs } from "./index";
 import { sha256 } from "../../utils/hash";
-import { runIFileSystemContract } from "../ifilesystem-contract";
+import { runIFileSystemContract } from "../ifilesystem-contract.test";
 
 vi.mock("obsidian");
 

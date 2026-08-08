@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createMockSecretStore } from "./googledrive/test-helpers";
+import { createMockSecretStore } from "./googledrive/test-helpers.test";
 import {
 	setBackendSecret,
 	getBackendSecret,

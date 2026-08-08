@@ -1,8 +1,8 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect, vi } from "vitest";
 import type { GoogleDriveFile } from "./types";
-import { spyRequestUrl, mockRes } from "./test-helpers";
-import type { GoogleDriveFsInternal, GoogleDriveFsCacheInternal } from "./test-helpers";
+import { spyRequestUrl, mockRes } from "./test-helpers.test";
+import type { GoogleDriveFsInternal, GoogleDriveFsCacheInternal } from "./test-helpers.test";
 
 vi.mock("obsidian");
 

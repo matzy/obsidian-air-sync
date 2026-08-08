@@ -5,8 +5,8 @@ import type { GoogleDriveFile, GoogleDriveChange } from "./types";
 import { FOLDER_MIME } from "./types";
 import { MetadataStore } from "../../store/metadata-store";
 import { GoogleDriveFs } from "./index";
-import { runCachingRemoteFsContract } from "../caching/remote-fs-contract";
-import type { CachingRemoteFsHarness } from "../caching/remote-fs-contract";
+import { runCachingRemoteFsContract } from "../caching/remote-fs-contract.test";
+import type { CachingRemoteFsHarness } from "../caching/remote-fs-contract.test";
 
 vi.mock("obsidian");
 

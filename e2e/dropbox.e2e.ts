@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DropboxAuth } from "../src/fs/dropbox/auth";
 import { DROPBOX_AUTH } from "../src/fs/auth-config";
 import { DropboxFs } from "../src/fs/dropbox/index";
-import { runIFileSystemContract, bytes } from "../src/fs/ifilesystem-contract";
+import { runIFileSystemContract, bytes } from "../src/fs/ifilesystem-contract.test";
 import { RetryingDropboxClient } from "./helpers/dropbox-retry-client";
 import { readCreds } from "./helpers/env";
 import {

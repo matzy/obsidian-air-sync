@@ -1,6 +1,6 @@
 import { App } from "obsidian";
 import { LocalFs } from "./index";
-import { runIFileSystemContract } from "../ifilesystem-contract";
+import { runIFileSystemContract } from "../ifilesystem-contract.test";
 
 // Run the shared IFileSystem contract against the REAL LocalFs over the in-memory
 // Vault mock. This exercises LocalFs's normal-path branches (vault.rename for

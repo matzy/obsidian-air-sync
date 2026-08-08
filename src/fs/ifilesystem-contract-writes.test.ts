@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { bytes, decode } from "./ifilesystem-contract";
-import type { IFileSystemContractCtx } from "./ifilesystem-contract";
+import { bytes, decode } from "./ifilesystem-contract.test";
+import type { IFileSystemContractCtx } from "./ifilesystem-contract.test";
 
 /**
  * The write-side and structural half of the {@link runIFileSystemContract} suite:

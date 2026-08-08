@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers";
-import type { GoogleDriveAuthProviderInternal, GoogleDriveCustomAuthProviderInternal } from "./test-helpers";
+import { spyRequestUrl, mockRes, createMockSecretStore } from "./test-helpers.test";
+import type { GoogleDriveAuthProviderInternal, GoogleDriveCustomAuthProviderInternal } from "./test-helpers.test";
 
 vi.mock("obsidian");
 

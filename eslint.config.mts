@@ -300,7 +300,6 @@ export default defineConfig(
 	},
 	globalIgnores([
 		"node_modules",
-		"vendor-types", // exact third-party snapshots; byte/hash parity is checked by lint:bot-repro
 		"dist",
 		"coverage",
 		"esbuild.config.mjs",

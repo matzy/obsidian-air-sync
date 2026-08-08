@@ -3,7 +3,7 @@ import type { OneDriveClient } from "./client";
 import type { OneDriveItem, OneDriveDeltaResponse } from "./types";
 import { OneDriveFs } from "./index";
 import { quickXorHashBase64 } from "../../utils/quickxor";
-import { runIFileSystemContract } from "../ifilesystem-contract";
+import { runIFileSystemContract } from "../ifilesystem-contract.test";
 
 vi.mock("obsidian");
 
