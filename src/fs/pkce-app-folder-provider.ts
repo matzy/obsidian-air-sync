@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import type { App } from "../platform/obsidian";
 import { getBackendData } from "./backend";
 import type { IBackendProvider } from "./backend";
 import type { ISecretStore } from "./secret-store";

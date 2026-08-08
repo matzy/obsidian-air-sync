@@ -1,5 +1,5 @@
-import type { App } from "obsidian";
-import { Platform } from "obsidian";
+import type { App } from "../../platform/obsidian";
+import { Platform } from "../../platform/obsidian";
 import type { IBackendProvider, WebFolderPicker } from "../backend";
 import type { ISecretStore } from "../secret-store";
 import type { IFileSystem } from "../interface";

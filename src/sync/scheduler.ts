@@ -1,5 +1,5 @@
-import { debounce, TFolder } from "obsidian";
-import type { EventRef, Workspace, Vault, TAbstractFile, TFile } from "obsidian";
+import { debounce, TFolder } from "../platform/obsidian";
+import type { EventRef, Workspace, Vault, TAbstractFile, TFile } from "../platform/obsidian";
 import type { IFileSystem } from "../fs/interface";
 import type { SyncStateStore } from "./state";
 import type { LocalChangeTracker } from "./local-tracker";

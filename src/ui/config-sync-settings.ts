@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { createFragment, Setting } from "../platform/obsidian";
 import type AirSyncPlugin from "../main";
 import { getConfigSyncIgnorePatterns } from "../config-sync";
 

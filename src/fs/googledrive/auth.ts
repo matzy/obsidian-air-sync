@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestUrl } from "../../platform/obsidian";
 import type { Logger } from "../../logging/logger";
 import { assertTokenResponse } from "./types";
 import { BaseOAuthTokenManager, buildOAuthState, computeS256Challenge, generateRandomString } from "../oauth-pkce";

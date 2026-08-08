@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import type { App } from "../../platform/obsidian";
 import type { IFileSystem } from "../interface";
 import type { AirSyncSettings } from "../../settings";
 import type { Logger } from "../../logging/logger";

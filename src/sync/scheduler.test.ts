@@ -61,7 +61,7 @@ function createDeps(
 				if (layoutReady) cb();
 				else layoutReadyCbs.push(cb);
 			},
-		} as unknown as SyncSchedulerDeps["workspace"],
+		},
 		vault: {
 			on: vi.fn((event: string, handler: WorkspaceHandler) => {
 				vaultHandlers.set(event, handler);

@@ -1,4 +1,4 @@
-import { deflateSync as rawDeflateSync, inflateSync as rawInflateSync } from "fflate";
+import { deflateSync, inflateSync } from "../platform/fflate";
 
 // fflate's exposed type can drift across toolchains. Narrow the runtime result
 // explicitly so typed-lint never depends on how that generic resolves.
@@ -25,7 +25,7 @@ const FORMAT_DEFLATE = 0x01; // body is raw-deflate compressed
 /** Compress content for storage, prefixing a 1-byte format header. */
 export function encodeContent(buf: ArrayBuffer): ArrayBuffer {
 	const input = new Uint8Array(buf);
-	const compressed = expectUint8Array(rawDeflateSync(input), "deflateSync");
+	const compressed = expectUint8Array(deflateSync(input), "deflateSync");
 	// Skip compression when it does not shrink the input (tiny/incompressible
 	// data, where the deflate overhead would otherwise grow it).
 	const useDeflate = compressed.length < input.length;
@@ -42,7 +42,7 @@ export function decodeContent(buf: ArrayBuffer): ArrayBuffer {
 	const format = bytes[0];
 	const body = bytes.subarray(1);
 	if (format === FORMAT_DEFLATE) {
-		return expectUint8Array(rawInflateSync(body), "inflateSync").buffer;
+		return expectUint8Array(inflateSync(body), "inflateSync").buffer;
 	}
 	if (format === FORMAT_RAW) {
 		// .slice() copies the subarray into a standalone buffer so the returned

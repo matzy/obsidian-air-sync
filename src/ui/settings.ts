@@ -5,7 +5,7 @@ import {
 	PluginSettingTab,
 	Setting,
 	type SettingDefinitionItem,
-} from "obsidian";
+} from "../platform/obsidian";
 import type AirSyncPlugin from "../main";
 import type { ConflictStrategy } from "../sync/types";
 import { getAllBackendProviders, getBackendProvider } from "../fs/registry";

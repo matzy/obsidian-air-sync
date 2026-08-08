@@ -25,6 +25,7 @@ import {
 export const REPRO_TARGETS = [
 	"src",
 ];
+export const REPRO_ESLINT_ARGS = ["--format", "json", "--ignore-pattern", "**/*.test.ts", ...REPRO_TARGETS];
 
 const DIRECT_RUNTIME_PACKAGES = ["obsidian", "fflate", "ignore", "js-md5", "node-diff3"];
 const COMMON_PROJECT_FILES = [
@@ -281,7 +282,7 @@ async function assertEffectiveConfig(projectRoot, normalWorkspace, injectedWorks
 }
 
 function runEslint(binaryPath, workspace, spawn) {
-	const result = spawn(binaryPath, ["--format", "json", ...REPRO_TARGETS], {
+	const result = spawn(binaryPath, REPRO_ESLINT_ARGS, {
 		cwd: workspace,
 		encoding: "utf8",
 		env: { ...process.env, ESLINT_USE_FLAT_CONFIG: "true" },
@@ -350,7 +351,7 @@ if (isMain) {
 	try {
 		const result = await runLintBotReproduction();
 		process.stdout.write(
-			`${result.classification.message}; TypeScript resolved 5/5 dependencies from the clean install; esbuild bundled 4/4 runtime implementations; source/config hashes matched\n`,
+			`${result.classification.message}; injected TypeScript resolved 5/5 dependencies to the untyped fixture; esbuild bundled 4/4 runtime implementations; source/config hashes matched\n`,
 		);
 	} catch (error) {
 		process.stderr.write(`lint-bot repro failed: ${error.message}\n`);

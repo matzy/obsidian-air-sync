@@ -1,4 +1,4 @@
-import { Notice } from "obsidian";
+import { Notice } from "../../platform/obsidian";
 import { getBackendData } from "../backend";
 import type { ISecretStore } from "../secret-store";
 import type { AirSyncSettings } from "../../settings";

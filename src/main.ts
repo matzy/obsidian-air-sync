@@ -1,4 +1,4 @@
-import { Notice, Platform, Plugin, setIcon, setTooltip } from "obsidian";
+import { Notice, Platform, Plugin, setIcon, setTooltip } from "./platform/obsidian";
 import { DEFAULT_SETTINGS, AirSyncSettings } from "./settings";
 import { liftActiveBackendData, normalizeConflictStrategy } from "./settings-normalize";
 import { getEffectiveSyncDotPaths } from "./config-sync";

@@ -175,9 +175,9 @@ are unavailable. It is a deterministic CI contract, not a replacement for
 
 | | |
 |---|---|
-| **Prevents** | Misdiagnosing a declaration-resolution failure as hundreds of independent source defects; weakening the five unsafe rules while normal lint happens to stay green |
+| **Prevents** | Shipping hundreds of `error`/`any` diagnostics when the community scanner does not install dependency declarations; weakening the five unsafe rules while normal lint happens to stay green |
 | **Where** | `package-lock.json`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
-| **How** | Resolves production source through the clean-install dependency declarations pinned by the lockfile. The current candidate must have zero unsafe findings. A pre-fix baseline changes only five direct dependency paths to an untyped declaration and must reproduce the broad cascade, all five rule families, and dependency-specific file/rule relationships. |
+| **How** | Lints production source twice with identical source and ESLint configuration: once through clean-install declarations and once with the five direct dependency paths replaced by an untyped declaration. Both candidates must exit 0 with zero findings from all five unsafe rule families. |
 | **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
 
 Do not copy dependency declarations into the repository. The community scanner lints
@@ -185,13 +185,11 @@ committed `.d.ts` files as source, so vendoring official declarations merely rep
 resolution warnings with warnings inside third-party code. Dependency versions and
 their declaration files are owned by `package-lock.json` and restored with `npm ci`.
 
-The pre-fix baseline ESLint process intentionally exits **1** because it found the
-historical diagnostics. The wrapper exits **0** only after its negative classifier
-tests pass, the current candidate exits 0 with zero unsafe findings, the pre-fix
-baseline exits exactly 1, the effective configs match,
-all dependency-specific file/rule relationships are present, and the negative control
-still produces at least 1,000 unsafe findings. An injected exit of 0, 2, or no exit
-status is treated as a broken reproduction or tool failure, not success.
+The injected process models the community scanner's dependency-less source pass. The
+wrapper exits **0** only after its negative classifier tests pass, both candidates exit
+0 with zero unsafe findings, TypeScript proves that all five injected imports resolve
+to the untyped fixture, and the effective configs match. A lint exit of 1, a tool exit
+of 2, or no exit status is a failure.
 
 This path never runs `npm install`, `npx`, a download, or a network request. It uses
 only `node_modules/.bin/eslint` and the ESLint API already installed from the lockfile,
@@ -204,15 +202,13 @@ The same command runs an esbuild metafile probe for fflate, ignore, js-md5, and
 node-diff3. It fails if the bundle no longer contains each package's JavaScript
 implementation.
 
-The all-untyped pre-fix control currently reproduces roughly 1,400 unsafe diagnostics. That exact
-total and line numbers are not contractual; the coarse lower bound and relational
-sentinels prevent the negative control from collapsing into a small synthetic sample.
-If normal lint and the current candidate side are green while only the pre-fix side
-shows the pinned cascade, the fix is confirmed at the declaration/type-resolution
-boundary. If the current candidate also reports unsafe findings, the command fails and
-the fix is incomplete. If the wrapper
-reports config, spawn, JSON, or exit-status failure, fix the runner/toolchain path
-before drawing either conclusion.
+Production modules reach those five packages only through `src/platform/`. Each
+boundary receives an unresolved runtime import as `unknown`, validates the small shape
+the plugin uses, and exposes first-party types to the rest of `src`. This keeps the
+runtime bundle unchanged while preventing a missing third-party declaration from
+poisoning application types. If either candidate reports unsafe findings, the fix is
+incomplete. If the wrapper reports config, resolution, spawn, JSON, or exit-status
+failure, fix the runner/toolchain path before drawing a conclusion.
 
 ## Test-pinned principles
 

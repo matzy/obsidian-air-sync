@@ -1,5 +1,5 @@
-import { Setting } from "obsidian";
-import type { App, TextComponent } from "obsidian";
+import { Setting } from "../platform/obsidian";
+import type { App, TextComponent } from "../platform/obsidian";
 import type { AirSyncSettings } from "../settings";
 import type { BackendConnectionActions } from "../fs/settings-renderer";
 import { AppFolderPickerModal, type AppFolderPickerProvider } from "./app-folder-picker";

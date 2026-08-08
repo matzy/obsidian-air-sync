@@ -1,4 +1,4 @@
-import type { RequestUrlParam, RequestUrlResponse } from "obsidian";
+import type { RequestUrlParam, RequestUrlResponse } from "../../platform/obsidian";
 import type { Logger } from "../../logging/logger";
 import { getHeader, headerKeys } from "../headers";
 import type { GoogleDriveFile } from "./types";

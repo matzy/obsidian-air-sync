@@ -1,4 +1,4 @@
-import { diffIndices, diff3Merge } from "node-diff3";
+import { diffIndices, diff3Merge } from "../platform/node-diff3";
 import { getFileExtension } from "../utils/path";
 
 const TEXT_EXTENSIONS = new Set([
@@ -49,7 +49,7 @@ function toHunks(diffs: ReturnType<typeof diffIndices>): DiffHunk[] {
 	return diffs.map(d => ({
 		baseStart: d.buffer1[0],
 		baseLen: d.buffer1[1],
-		content: d.buffer2Content as string[],
+		content: d.buffer2Content,
 	}));
 }
 

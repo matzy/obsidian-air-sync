@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestUrl } from "../../platform/obsidian";
 import type { ISecretStore } from "../secret-store";
 import type { Logger } from "../../logging/logger";
 import { AuthError } from "../errors";

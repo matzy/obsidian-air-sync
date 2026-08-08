@@ -1,5 +1,5 @@
-import type { App } from "obsidian";
-import { Notice, SecretComponent, Setting } from "obsidian";
+import type { App } from "../platform/obsidian";
+import { Notice, SecretComponent, Setting } from "../platform/obsidian";
 import type { AirSyncSettings } from "../settings";
 import type {
 	BackendConnectionActions,

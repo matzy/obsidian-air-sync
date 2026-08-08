@@ -1,5 +1,5 @@
-import type { App } from "obsidian";
-import { Modal, Notice, Setting } from "obsidian";
+import type { App } from "../platform/obsidian";
+import { Modal, Notice, Setting } from "../platform/obsidian";
 import type { AirSyncSettings } from "../settings";
 
 /** Minimal client shape the picker needs: list folders directly under the app root. */

@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import type { App } from "../platform/obsidian";
 import type { AirSyncSettings } from "../settings";
 
 /** Actions that settings renderers can invoke for connection flow UI */

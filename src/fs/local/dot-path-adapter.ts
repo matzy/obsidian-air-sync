@@ -1,4 +1,4 @@
-import type { Vault } from "obsidian";
+import type { Vault } from "../../platform/obsidian";
 import type { FileEntity } from "../types";
 import { sha256 } from "../../utils/hash";
 

@@ -1,4 +1,4 @@
-import { Notice, Platform } from "obsidian";
+import { Notice, Platform } from "../../platform/obsidian";
 import type { IAuthProvider } from "../auth";
 import type { ISecretStore } from "../secret-store";
 import type { Logger } from "../../logging/logger";

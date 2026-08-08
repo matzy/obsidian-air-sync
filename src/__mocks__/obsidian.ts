@@ -32,6 +32,14 @@ export class Notice {
 	constructor(_message: string, _timeout?: number) {}
 }
 
+export class SecretComponent {
+	constructor(_app: unknown, _containerEl: HTMLElement) {}
+	setValue(_value: string): this { return this; }
+	onChange(_callback: (value: string) => unknown): this { return this; }
+	setPlaceholder(_value: string): this { return this; }
+	setDisabled(_disabled: boolean): this { return this; }
+}
+
 /**
  * Test hooks for driving Modal/Setting interactions without a DOM. Populated as
  * the UI renders; reset these between tests (`__ui.buttons = []; __ui.lastModal = null`).
@@ -76,6 +84,7 @@ export class Modal {
 }
 
 export class Setting {
+	settingEl = new FakeEl() as unknown as HTMLElement;
 	private _name = "";
 	constructor(_containerEl: HTMLElement) {}
 	setName(name: string) {
@@ -113,7 +122,14 @@ export class Setting {
 	addTextArea(_cb: (t: unknown) => unknown) {
 		return this;
 	}
+	addComponent(cb: (el: HTMLElement) => unknown) {
+		cb(new FakeEl() as unknown as HTMLElement);
+		return this;
+	}
 }
+
+export function setIcon(_parent: HTMLElement, _iconId: string): void {}
+export function setTooltip(_parent: HTMLElement, _tooltip: string | DocumentFragment): void {}
 
 export const Platform = {
 	isMobile: false,
@@ -410,4 +426,18 @@ export class PluginSettingTab {
 	get containerEl(): HTMLElement {
 		return document.createElement("div");
 	}
+}
+
+export class Plugin {
+	app = new App();
+	manifest = { id: "air-sync" };
+	loadData(): Promise<unknown> { return Promise.resolve({}); }
+	saveData(_data: unknown): Promise<void> { return Promise.resolve(); }
+	register(_callback: () => unknown): void {}
+	registerEvent(_ref: unknown): void {}
+	registerDomEvent(_el: unknown, _type: string, _callback: (event: unknown) => unknown): void {}
+	registerObsidianProtocolHandler(_action: string, _callback: (params: Record<string, string>) => unknown): void {}
+	addCommand(_command: unknown): void {}
+	addStatusBarItem(): HTMLElement { return new FakeEl() as unknown as HTMLElement; }
+	addSettingTab(_tab: unknown): void {}
 }

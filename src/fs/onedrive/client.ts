@@ -1,5 +1,5 @@
-import { requestUrl } from "obsidian";
-import type { RequestUrlParam, RequestUrlResponse } from "obsidian";
+import { requestUrl } from "../../platform/obsidian";
+import type { RequestUrlParam, RequestUrlResponse } from "../../platform/obsidian";
 import type { Logger } from "../../logging/logger";
 import { getHeader } from "../headers";
 import type {

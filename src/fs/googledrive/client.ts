@@ -1,5 +1,5 @@
-import { requestUrl } from "obsidian";
-import type { RequestUrlParam } from "obsidian";
+import { requestUrl } from "../../platform/obsidian";
+import type { RequestUrlParam } from "../../platform/obsidian";
 import type { Logger } from "../../logging/logger";
 import type { GoogleDriveFile, GoogleDriveFileList, GoogleDriveChangeList } from "./types";
 import {

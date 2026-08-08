@@ -1,4 +1,5 @@
-import { App, TFile, TFolder, Vault } from "obsidian";
+import { TFile, TFolder } from "../../platform/obsidian";
+import type { App, Vault } from "../../platform/obsidian";
 import type { IFileSystem } from "../interface";
 import type { FileEntity } from "../types";
 import { sha256 } from "../../utils/hash";

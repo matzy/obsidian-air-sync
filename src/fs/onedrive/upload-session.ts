@@ -1,4 +1,4 @@
-import type { RequestUrlParam, RequestUrlResponse } from "obsidian";
+import type { RequestUrlParam, RequestUrlResponse } from "../../platform/obsidian";
 import type { OneDriveItem } from "./types";
 import { encodeRelPath } from "./types";
 

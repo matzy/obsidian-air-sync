@@ -1,4 +1,4 @@
-import ignore from "ignore";
+import { isIgnoredByPatterns } from "../platform/ignore";
 
 /**
  * OS-generated junk files that are never worth syncing on ANY backend (and that
@@ -17,5 +17,5 @@ export function isSystemJunkFile(path: string): boolean {
 
 export function isIgnored(path: string, patterns: string[]): boolean {
 	if (patterns.length === 0) return false;
-	return ignore().add(patterns).ignores(path);
+	return isIgnoredByPatterns(path, patterns);
 }
