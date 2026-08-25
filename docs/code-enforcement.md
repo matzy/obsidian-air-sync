@@ -100,6 +100,19 @@ functions — no I/O, no clock, no randomness — so every intermediate state is
 | **How** | `no-restricted-imports` + `no-restricted-syntax` (error), scoped to those files |
 | **Exception** | Pass timestamps/variation in as data. To add a new pure transform, list its file in `PURE_TRANSFORMS` |
 
+### Producer-qualified mock path evidence
+
+Sync tests must not choose path authority independently from the filesystem role.
+The canonical role factories keep mutation-backed local observations resolved and
+remote observations as request echoes until a test explicitly models provider confirmation.
+
+| | |
+|---|---|
+| **Prevents** | `src/sync/**/*.test.ts` importing the raw authority-parameterized `createMockFs`, which could give remote mutations invented `actual_resolved` evidence |
+| **Where** | `RAW_SYNC_MOCK_FS_IMPORT` in `eslint.config.mts` |
+| **How** | `no-restricted-imports` (error), scoped to sync tests |
+| **Exception** | Raw construction is reserved for dedicated mock contract tests under `src/__mocks__/`; sync tests use `createMockLocalFs()` or `createMockRemoteFs()` |
+
 ## 6. Single responsibility per module (Principle #7)
 
 Each file owns one concept. The `max-lines` cap is a **prompt to consider a
@@ -123,9 +136,10 @@ the new size, with a comment saying why the split was deferred. The pin is a
 ratchet: it stops *silent* growth and flags the file as split-when-convenient — it
 is not a mandate to shrink the file by force.
 
-Four modules currently carry such overrides as known debt: `fs/googledrive/auth.ts`
-(337), `sync/orchestrator.ts` (385), `fs/caching/remote-fs.ts` (317), and
-`fs/backend-manager.ts` (341). Ratchet them down when a natural split presents itself.
+Five modules currently carry such overrides as known debt: `fs/googledrive/auth.ts`
+(337), `sync/orchestrator.ts` (406), `sync/plan-admission.ts` (398),
+`fs/caching/remote-fs.ts` (326), and `fs/backend-manager.ts` (341). Ratchet them down
+when a natural responsibility split presents itself.
 (`fs/googledrive/index.ts` was here at 397; ADR 0001 lifted its cache/checkpoint
 machinery into `fs/caching/`, dropping it back under 300, so it is no longer
 overridden.)

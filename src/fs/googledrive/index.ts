@@ -108,6 +108,8 @@ export class GoogleDriveFs extends CachingRemoteFs<GoogleDriveFile> {
 		const hash = await sha256(content);
 		return {
 			path,
+			pathAuthority: "requested_echo",
+			identityKey: googleDriveFile.id,
 			isDirectory: false,
 			size: content.byteLength,
 			mtime: googleDriveFile.modifiedTime
@@ -126,6 +128,8 @@ export class GoogleDriveFs extends CachingRemoteFs<GoogleDriveFile> {
 			const folderId = await this.ensureFolder(path);
 			return {
 				path,
+				pathAuthority: "requested_echo",
+				identityKey: folderId,
 				isDirectory: true,
 				size: 0,
 				mtime: 0,

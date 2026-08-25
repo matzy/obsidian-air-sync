@@ -3,7 +3,8 @@ import type { RequestUrlParam } from "obsidian";
 import { spyRequestUrl, mockRes, dbxFile, dbxFolder, untagged } from "./test-helpers";
 import type { DropboxFsInternal } from "./test-helpers";
 import type { DropboxEntry } from "./types";
-import type { MetadataStore } from "../../store/metadata-store";
+import "fake-indexeddb/auto";
+import { METADATA_CACHE_VERSION, MetadataStore } from "../../store/metadata-store";
 
 vi.mock("obsidian");
 
@@ -102,6 +103,8 @@ describe("DropboxFs.write", () => {
 
 		const entity = await fs.write("sub/x.md", bytes("hi"), 1_700_000_000_000);
 		expect(entity.path).toBe("sub/x.md");
+		expect(entity.pathAuthority).toBe("requested_echo");
+		expect(entity.identityKey).toBe("id:x");
 		expect(entity.remoteChecksum).toEqual({ algo: "dropbox", value: "hashx" });
 		expect(entity.hash).not.toBe(""); // sha256 of content is computed on write
 
@@ -230,6 +233,196 @@ describe("DropboxFs stale-cache guards (CAS mechanism)", () => {
 });
 
 describe("DropboxFs.rename", () => {
+	type CacheView = {
+		setEntry(path: string, entry: DropboxEntry): void;
+		getFile(path: string): DropboxEntry | undefined;
+	};
+
+	async function caseRenameFs() {
+		const fs = await makeFs();
+		(fs as unknown as DropboxFsInternal).initialized = true;
+		const cache = (fs as unknown as { cache: CacheView }).cache;
+		cache.setEntry("Case.md", dbxFile("case", "/root/Case.md"));
+		return { fs, cache };
+	}
+
+	function notFound() {
+		return mockRes({ error_summary: "path/not_found/", error: { ".tag": "path" } }, { status: 409 });
+	}
+
+	it("performs a case-only rename through a deterministic intermediate path", async () => {
+		const { fs } = await caseRenameFs();
+		const moves: Array<{ from_path: string; to_path: string }> = [];
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) return Promise.resolve(notFound());
+			if (request.url.includes("move_v2")) {
+				const body = JSON.parse(request.body as string) as { from_path: string; to_path: string };
+				moves.push(body);
+				const path = moves.length === 1 ? "/root/.airsync-case-rename" : "/root/case.md";
+				return Promise.resolve(mockRes({ metadata: untagged(dbxFile("case", path)) }));
+			}
+			return Promise.resolve(mockRes({}));
+		});
+
+		await fs.rename("Case.md", "case.md");
+
+		expect(moves).toHaveLength(2);
+		expect(moves[0]!.from_path).toBe("id:root/Case.md");
+		expect(moves[0]!.to_path).toMatch(/^id:root\/\.airsync-case-rename-[0-9a-f]{8}$/);
+		expect(moves[1]).toMatchObject({ from_path: moves[0]!.to_path, to_path: "id:root/case.md" });
+		expect((await fs.stat("case.md"))?.identityKey).toBe("id:case");
+	});
+
+	it("persists case-only rename intent before the first remote move", async () => {
+		const events: string[] = [];
+		const store = {
+			getMeta: () => Promise.resolve(undefined),
+			setMeta: () => { events.push("persist"); return Promise.resolve(); },
+			deleteMeta: () => Promise.resolve(),
+		} as unknown as MetadataStore<DropboxEntry>;
+		const { DropboxFs } = await import("./index");
+		const { DropboxClient } = await import("./client");
+		const fs = new DropboxFs(
+			new DropboxClient(() => Promise.resolve("AT")), "id:root", undefined, store,
+		);
+		(fs as unknown as DropboxFsInternal).initialized = true;
+		(fs as unknown as { cache: CacheView }).cache.setEntry(
+			"Case.md", dbxFile("case", "/root/Case.md"),
+		);
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) return Promise.resolve(notFound());
+			if (request.url.includes("move_v2")) {
+				events.push("move");
+				return Promise.resolve(mockRes({ metadata: untagged(dbxFile("case", "/root/case.md")) }));
+			}
+			return Promise.resolve(mockRes({}));
+		});
+
+		await fs.rename("Case.md", "case.md");
+
+		expect(events).toEqual(["persist", "move", "move"]);
+	});
+
+	it("resumes the second leg when the deterministic intermediate already holds the source id", async () => {
+		const { fs } = await caseRenameFs();
+		const moves: Array<{ from_path: string; to_path: string }> = [];
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) {
+				return Promise.resolve(mockRes(dbxFile("case", "/root/.airsync-case-rename-existing")));
+			}
+			if (request.url.includes("move_v2")) {
+				moves.push(JSON.parse(request.body as string) as { from_path: string; to_path: string });
+				return Promise.resolve(mockRes({ metadata: untagged(dbxFile("case", "/root/case.md")) }));
+			}
+			return Promise.resolve(mockRes({}));
+		});
+
+		await fs.rename("Case.md", "case.md");
+
+		expect(moves).toHaveLength(1);
+		expect(moves[0]!.from_path).toMatch(/^id:root\/\.airsync-case-rename-[0-9a-f]{8}$/);
+		expect(moves[0]!.to_path).toBe("id:root/case.md");
+	});
+
+	it("fails before moving when the deterministic intermediate is occupied by another id", async () => {
+		const { fs } = await caseRenameFs();
+		const move = vi.fn();
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) {
+				return Promise.resolve(mockRes(dbxFile("foreign", "/root/.airsync-case-rename-occupied")));
+			}
+			if (request.url.includes("move_v2")) move();
+			return Promise.resolve(mockRes({}));
+		});
+
+		await expect(fs.rename("Case.md", "case.md")).rejects.toThrow("temporary path is occupied");
+		expect(move).not.toHaveBeenCalled();
+	});
+
+	it("rolls the first leg back when the final move fails", async () => {
+		const { fs, cache } = await caseRenameFs();
+		const moves: Array<{ from_path: string; to_path: string }> = [];
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) return Promise.resolve(notFound());
+			if (request.url.includes("move_v2")) {
+				moves.push(JSON.parse(request.body as string) as { from_path: string; to_path: string });
+				if (moves.length === 2) {
+					return Promise.resolve(mockRes(
+						{ error_summary: "to/conflict/file/", error: { ".tag": "to" } },
+						{ status: 409 },
+					));
+				}
+				return Promise.resolve(mockRes({ metadata: untagged(dbxFile("case", "/root/Case.md")) }));
+			}
+			return Promise.resolve(mockRes({}));
+		});
+
+		await expect(fs.rename("Case.md", "case.md")).rejects.toThrow("Dropbox API move failed");
+
+		expect(moves).toHaveLength(3);
+		expect(moves[2]).toMatchObject({ from_path: moves[0]!.to_path, to_path: "id:root/Case.md" });
+		expect(cache.getFile("Case.md")?.id).toBe("id:case");
+		expect(cache.getFile("case.md")).toBeUndefined();
+	});
+
+	it("recovers a persisted case-only rename from its temporary path after restart", async () => {
+		const store = new MetadataStore<DropboxEntry>(crypto.randomUUID(), {
+			dbNamePrefix: "air-sync-dropbox-case-rename", version: METADATA_CACHE_VERSION,
+		});
+		await store.setMeta("dropboxCaseRenamePending", JSON.stringify({
+			oldPath: "Case.md",
+			newPath: "case.md",
+			tempPath: ".airsync-case-rename-35544a52",
+			expectedId: "id:case",
+		}));
+		let moved = false;
+		const moves: Array<{ from_path: string; to_path: string }> = [];
+		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
+			const request = opts as RequestUrlParam;
+			if (request.url.includes("get_metadata")) {
+				const path = (JSON.parse(request.body as string) as { path: string }).path;
+				if (path === "id:root") return Promise.resolve(metaRes());
+				if (path.endsWith("/.airsync-case-rename-35544a52") && !moved) {
+					return Promise.resolve(mockRes(dbxFile("case", "/root/.airsync-case-rename-35544a52")));
+				}
+				if (path.endsWith("/case.md") && moved) {
+					return Promise.resolve(mockRes(dbxFile("case", "/root/case.md")));
+				}
+				return Promise.resolve(notFound());
+			}
+			if (request.url.includes("move_v2")) {
+				moves.push(JSON.parse(request.body as string) as { from_path: string; to_path: string });
+				moved = true;
+				return Promise.resolve(mockRes({ metadata: untagged(dbxFile("case", "/root/case.md")) }));
+			}
+			if (request.url.includes("get_latest_cursor")) return Promise.resolve(mockRes({ cursor: "C0" }));
+			if (request.url.endsWith(PLAIN_LIST)) {
+				const entries = moved ? [dbxFile("case", "/root/case.md")] : [];
+				return Promise.resolve(mockRes({ entries, cursor: "C1", has_more: false }));
+			}
+			return Promise.resolve(mockRes({}));
+		});
+		const { DropboxFs } = await import("./index");
+		const { DropboxClient } = await import("./client");
+		const fs = new DropboxFs(
+			new DropboxClient(() => Promise.resolve("AT")), "id:root", undefined, store,
+		);
+
+		expect((await fs.list()).map((item) => item.path)).toEqual(["case.md"]);
+		expect(moves).toHaveLength(1);
+		expect(moves[0]).toMatchObject({
+			from_path: "id:root/.airsync-case-rename-35544a52",
+			to_path: "id:root/case.md",
+		});
+		expect(await store.getMeta("dropboxCaseRenamePending")).toBeUndefined();
+		await store.close();
+	});
+
 	it("keeps a moved folder classified as a folder even when move_v2 returns it untagged", async () => {
 		(await spyRequestUrl()).mockImplementation((opts: string | RequestUrlParam) => {
 			const url = typeof opts === "string" ? opts : opts.url;
@@ -244,7 +437,12 @@ describe("DropboxFs.rename", () => {
 		const fs = await makeFs();
 		(fs as unknown as DropboxFsInternal).initialized = true;
 		// Seed a folder "docs" in the cache (as a full scan would).
-		await fs.mkdir("docs");
+		const folder = await fs.mkdir("docs");
+		expect(folder).toMatchObject({
+			path: "docs",
+			pathAuthority: "requested_echo",
+			identityKey: "id:d",
+		});
 
 		await fs.rename("docs", "papers");
 		expect((await fs.stat("papers"))?.isDirectory).toBe(true);
@@ -281,6 +479,7 @@ describe("DropboxFs id-based addressing", () => {
 		// (CURSOR_META_KEY), so its presence is what makes loadFromCache replay.
 		const fakeStore = {
 			open: () => Promise.resolve(),
+			getMeta: () => Promise.resolve(undefined),
 			loadAll: () => Promise.resolve({
 				files: [{ path: "a.md", file: dbxFile("1", "/root/a.md") }],
 				meta: new Map<string, string>([["changesStartPageToken", "C1"]]),

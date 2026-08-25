@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { commitAction, buildSyncRecord } from "./state-committer";
 import type { SyncAction } from "./types";
-import { createMockFs, createMockStateStore, makeFile } from "../__mocks__/sync-test-helpers";
+import { createMockLocalFs, type MockFileSystem, createMockStateStore, makeFile } from "../__mocks__/sync-test-helpers";
 import type { SyncStateStore } from "./state";
 import type { Logger } from "../logging/logger";
 
@@ -10,6 +10,7 @@ describe("buildSyncRecord", () => {
 		const local = makeFile("a.md", "hello", 1000).entity;
 		const remote = makeFile("a.md", "hello", 2000).entity;
 		remote.backendMeta = { id: "drive-id" };
+		remote.identityKey = "native-id";
 
 		const record = buildSyncRecord(local, remote, "a.md");
 
@@ -19,6 +20,7 @@ describe("buildSyncRecord", () => {
 		expect(record.localSize).toBe(local.size);
 		expect(record.remoteSize).toBe(remote.size);
 		expect(record.backendMeta).toEqual({ id: "drive-id" });
+		expect(record.remoteIdentityKey).toBe("native-id");
 		expect(record.syncedAt).toBeGreaterThan(0);
 	});
 
@@ -44,11 +46,11 @@ describe("buildSyncRecord", () => {
 
 describe("commitAction", () => {
 	let stateStore: ReturnType<typeof createMockStateStore>;
-	let localFs: ReturnType<typeof createMockFs>;
+	let localFs: MockFileSystem;
 
 	beforeEach(() => {
 		stateStore = createMockStateStore();
-		localFs = createMockFs("local");
+		localFs = createMockLocalFs();
 	});
 
 	function makeCtx(enableThreeWayMerge = false) {

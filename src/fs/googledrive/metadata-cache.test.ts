@@ -46,6 +46,12 @@ describe("empty cache queries", () => {
 		expect(cache.size).toBe(0);
 		expect([...cache.entries()]).toEqual([]);
 	});
+
+	it("does not treat an absent cache path as producer-resolved", () => {
+		const cache = makeCache();
+
+		expect(cache.getPathAuthority("missing.md")).toBe("requested_echo");
+	});
 });
 
 // ── setFile ──
@@ -76,7 +82,75 @@ describe("setFile", () => {
 
 		expect(cache.getFile("a.txt")).toBe(updated);
 		expect(cache.getPathById("f2")).toBe("a.txt");
+		expect(cache.getPathById("f1")).toBeUndefined();
 		expect(cache.size).toBe(1);
+	});
+
+	it("re-keys the same stable id to one path", () => {
+		const cache = makeCache();
+		cache.setFile("old.txt", makeGoogleDriveFile({ id: "f1", name: "old.txt" }));
+
+		cache.setFile(
+			"new.txt",
+			makeGoogleDriveFile({ id: "f1", name: "new.txt" }),
+			"actual_resolved",
+		);
+
+		expect(cache.hasFile("old.txt")).toBe(false);
+		expect(cache.getPathById("f1")).toBe("new.txt");
+		expect(cache.getPathAuthority("new.txt")).toBe("actual_resolved");
+		expect(cache.size).toBe(1);
+		expect(cache.exportRecords().map((record) => record.path)).toEqual(["new.txt"]);
+	});
+
+	it("evicts a destination folder occupant and its subtree when re-keying", () => {
+		const cache = makeCache();
+		cache.setFile("old.txt", makeGoogleDriveFile({ id: "f1", name: "old.txt" }));
+		cache.setFile("occupied", makeFolder({ id: "d1", name: "occupied" }));
+		cache.setFile(
+			"occupied/child.txt",
+			makeGoogleDriveFile({ id: "c1", name: "child.txt" }),
+		);
+
+		const moved = makeGoogleDriveFile({ id: "f1", name: "occupied" });
+		cache.setFile("occupied", moved);
+
+		expect(cache.getFile("occupied")).toBe(moved);
+		expect(cache.hasFile("old.txt")).toBe(false);
+		expect(cache.hasFile("occupied/child.txt")).toBe(false);
+		expect(cache.getPathById("d1")).toBeUndefined();
+		expect(cache.getPathById("c1")).toBeUndefined();
+		expect(cache.exportRecords()).toEqual([{
+			path: "occupied",
+			file: moved,
+			isFolder: false,
+			pathAuthority: "requested_echo",
+		}]);
+	});
+
+	it("rewrites descendants when a folder stable id is re-keyed", () => {
+		const cache = makeCache();
+		cache.setFile("old", makeFolder({ id: "d1", name: "old" }));
+		cache.setFile(
+			"old/child.txt",
+			makeGoogleDriveFile({ id: "c1", name: "child.txt" }),
+			"actual_resolved",
+		);
+
+		cache.setFile("new", makeFolder({ id: "d1", name: "new" }));
+
+		expect(cache.hasFile("old")).toBe(false);
+		expect(cache.hasFile("old/child.txt")).toBe(false);
+		expect(cache.hasFile("new")).toBe(true);
+		expect(cache.hasFile("new/child.txt")).toBe(true);
+		expect(cache.getPathById("c1")).toBe("new/child.txt");
+		expect(cache.getPathAuthority("new/child.txt")).toBe("requested_echo");
+		expect(cache.exportRecords().find((record) => record.path === "new/child.txt")?.pathAuthority)
+			.toBe("actual_resolved");
+
+		cache.setFile("new", makeFolder({ id: "d1", name: "new" }), "actual_resolved");
+
+		expect(cache.getPathAuthority("new/child.txt")).toBe("actual_resolved");
 	});
 
 	it("maintains children index", () => {
@@ -132,6 +206,15 @@ describe("bulkLoad", () => {
 		expect(cache.isFolder("docs")).toBe(true);
 		expect(cache.getChildren("docs")?.has("docs/b.txt")).toBe(true);
 	});
+
+	it("rejects persisted duplicate stable ids instead of selecting by path order", () => {
+		const cache = makeCache();
+		expect(() => cache.bulkLoad([
+			["a-new.txt", makeGoogleDriveFile({ id: "f1", name: "a-new.txt" })],
+			["z-old.txt", makeGoogleDriveFile({ id: "f1", name: "z-old.txt" })],
+		])).toThrow(/duplicate stable id/i);
+		expect(cache.size).toBe(0);
+	});
 });
 
 // ── clear ──
@@ -139,12 +222,15 @@ describe("bulkLoad", () => {
 describe("clear", () => {
 	it("empties all data structures", () => {
 		const cache = makeCache();
-		cache.setFile("a.txt", makeGoogleDriveFile({ id: "f1", name: "a.txt" }));
+		const file = makeGoogleDriveFile({ id: "f1", name: "a.txt" });
+		cache.setFile("a.txt", file, "actual_resolved");
 		cache.clear();
 
 		expect(cache.size).toBe(0);
 		expect(cache.hasFile("a.txt")).toBe(false);
 		expect(cache.getPathById("f1")).toBeUndefined();
+		cache.setFile("a.txt", file);
+		expect(cache.toEntity("a.txt", file).pathAuthority).toBe("requested_echo");
 	});
 });
 
@@ -162,6 +248,8 @@ describe("exportRecords", () => {
 		const file = records.find((r) => r.path === "a.txt");
 		expect(folder?.isFolder).toBe(true);
 		expect(file?.isFolder).toBe(false);
+		expect(folder?.pathAuthority).toBe("requested_echo");
+		expect(file?.pathAuthority).toBe("requested_echo");
 	});
 });
 
@@ -305,6 +393,19 @@ describe("buildFromFiles", () => {
 		expect(cache.isFolder("docs")).toBe(true);
 	});
 
+	it("does not promote missing-parent or cyclic fallback paths to resolved authority", () => {
+		const cache = makeCache();
+		const orphan = makeGoogleDriveFile({ id: "orphan", name: "orphan.md", parents: ["missing"] });
+		const a = makeFolder({ id: "a", name: "A", parents: ["b"] });
+		const b = makeFolder({ id: "b", name: "B", parents: ["a"] });
+
+		cache.buildFromFiles([orphan, a, b]);
+
+		expect(cache.toEntity("orphan.md", orphan).pathAuthority).toBe("requested_echo");
+		const cyclicPath = cache.getPathById("a")!;
+		expect(cache.toEntity(cyclicPath, a).pathAuthority).toBe("requested_echo");
+	});
+
 	it("handles circular references gracefully", () => {
 		const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() };
 		const cache = new GoogleDriveMetadataCache(ROOT, logger as never);
@@ -384,6 +485,21 @@ describe("removeTree", () => {
 // ── toEntity ──
 
 describe("toEntity", () => {
+	it("distinguishes backend-resolved paths from requested mutation paths", () => {
+		const scanned = makeGoogleDriveFile({ id: "f1", name: "Scanned.md", parents: [ROOT] });
+		const changed = makeGoogleDriveFile({ id: "f2", name: "Changed.md", parents: [ROOT] });
+		const requested = makeGoogleDriveFile({ id: "f3", name: "Written.md", parents: [ROOT] });
+		const cache = makeCache();
+
+		cache.buildFromFiles([scanned]);
+		cache.applyFileChange(changed);
+		cache.setFile("Written.md", requested);
+
+		expect(cache.toEntity("Scanned.md", scanned).pathAuthority).toBe("actual_resolved");
+		expect(cache.toEntity("Changed.md", changed).pathAuthority).toBe("actual_resolved");
+		expect(cache.toEntity("Written.md", requested).pathAuthority).toBe("requested_echo");
+	});
+
 	it("converts file to entity", () => {
 		const cache = makeCache();
 		const file = makeGoogleDriveFile({ id: "f1", name: "a.txt", modifiedTime: "2024-01-01T00:00:00.000Z", size: "100", md5Checksum: "abc" });
@@ -391,6 +507,8 @@ describe("toEntity", () => {
 
 		const entity = cache.toEntity("a.txt", file);
 		expect(entity.path).toBe("a.txt");
+		expect(entity.pathAuthority).toBe("requested_echo");
+		expect(entity.identityKey).toBe("f1");
 		expect(entity.isDirectory).toBe(false);
 		expect(entity.size).toBe(100);
 		expect(entity.mtime).toBe(new Date("2024-01-01T00:00:00.000Z").getTime());
@@ -405,6 +523,8 @@ describe("toEntity", () => {
 		cache.setFile("docs", folder);
 
 		const entity = cache.toEntity("docs", folder);
+		expect(entity.pathAuthority).toBe("requested_echo");
+		expect(entity.identityKey).toBe("d1");
 		expect(entity.isDirectory).toBe(true);
 		expect(entity.size).toBe(0);
 	});
@@ -423,6 +543,23 @@ describe("toEntity", () => {
 // ── applyFileChange ──
 
 describe("applyFileChange", () => {
+	it("inherits a cached parent's authority when resolving a child delta", () => {
+		const requestedParent = makeFolder({ id: "d1", name: "Docs", parents: [ROOT] });
+		const child = makeGoogleDriveFile({ id: "f1", name: "a.md", parents: ["d1"] });
+		const cache = makeCache();
+		cache.bulkLoad([["Docs", requestedParent]]);
+
+		cache.applyFileChange(child);
+
+		expect(cache.toEntity("Docs/a.md", child).pathAuthority).toBe("requested_echo");
+		expect(cache.exportRecords().find((record) => record.path === "Docs/a.md")?.pathAuthority)
+			.toBe("actual_resolved");
+
+		cache.setFile("Docs", requestedParent, "actual_resolved");
+
+		expect(cache.toEntity("Docs/a.md", child).pathAuthority).toBe("actual_resolved");
+	});
+
 	it("adds new file", () => {
 		const cache = makeCache();
 		cache.setFile("docs", makeFolder({ id: "d1", name: "docs", parents: [ROOT] }));
@@ -511,6 +648,42 @@ describe("applyFileChange", () => {
 		expect(cache.hasFile("data/child.txt")).toBe(false);
 		// The displaced folder's id no longer points anywhere.
 		expect(cache.getPathById("d1")).toBeUndefined();
+		expect(cache.getPathById("c1")).toBeUndefined();
+	});
+
+	it("evicts descendants when the same stable id changes from folder to file in place", () => {
+		const cache = makeCache();
+		cache.setFile("data", makeFolder({ id: "same", name: "data", parents: [ROOT] }));
+		cache.setFile(
+			"data/child.txt",
+			makeGoogleDriveFile({ id: "c1", name: "child.txt", parents: ["same"] }),
+		);
+
+		const replacement = makeGoogleDriveFile({ id: "same", name: "data", parents: [ROOT] });
+		cache.applyFileChange(replacement);
+
+		expect(cache.getFile("data")).toBe(replacement);
+		expect(cache.isFolder("data")).toBe(false);
+		expect(cache.hasFile("data/child.txt")).toBe(false);
+		expect(cache.getPathById("c1")).toBeUndefined();
+	});
+
+	it("evicts old descendants when a folder stable id re-keys as a file", () => {
+		const cache = makeCache();
+		cache.setFile("old", makeFolder({ id: "same", name: "old", parents: [ROOT] }));
+		cache.setFile(
+			"old/child.txt",
+			makeGoogleDriveFile({ id: "c1", name: "child.txt", parents: ["same"] }),
+		);
+
+		const replacement = makeGoogleDriveFile({ id: "same", name: "new", parents: [ROOT] });
+		cache.applyFileChange(replacement);
+
+		expect(cache.getFile("new")).toBe(replacement);
+		expect(cache.isFolder("new")).toBe(false);
+		expect(cache.hasFile("old")).toBe(false);
+		expect(cache.hasFile("old/child.txt")).toBe(false);
+		expect(cache.hasFile("new/child.txt")).toBe(false);
 		expect(cache.getPathById("c1")).toBeUndefined();
 	});
 

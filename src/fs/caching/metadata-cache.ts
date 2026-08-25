@@ -1,6 +1,7 @@
-import type { FileEntity } from "../types";
+import type { FileEntity, PathAuthority } from "../types";
 import type { Logger } from "../../logging/logger";
 import { INTERNAL_METADATA_PATH } from "../remote-vault-contract";
+import { resolveCachedPathAuthority, resolvePathAuthority, resolveStoredPathAuthority } from "./path-authority";
 
 export interface FileChangeResult {
 	oldPath: string | undefined;
@@ -30,6 +31,8 @@ export abstract class AbstractMetadataCache<TFile> {
 	private folders = new Set<string>();
 	/** Parent path → set of direct child paths (for O(k) child lookups) */
 	private children = new Map<string, Set<string>>();
+	/** Producer-qualified authority for each cached path spelling. */
+	private pathAuthorities = new Map<string, PathAuthority>();
 
 	private rootFolderId: string;
 	protected logger?: Logger;
@@ -63,6 +66,8 @@ export abstract class AbstractMetadataCache<TFile> {
 	getPathById(id: string): string | undefined { return this.idToPath.get(id); }
 	hasId(id: string): boolean { return this.idToPath.has(id); }
 	getChildren(path: string): ReadonlySet<string> | undefined { return this.children.get(path); }
+	getPathAuthority(path: string): PathAuthority { return resolveCachedPathAuthority(path, this.pathToFile, this.pathAuthorities); }
+	getStoredPathAuthority(path: string): PathAuthority { return resolveStoredPathAuthority(path, this.pathAuthorities); }
 	get size(): number { return this.pathToFile.size; }
 	entries(): IterableIterator<[string, TFile]> { return this.pathToFile.entries(); }
 
@@ -91,15 +96,44 @@ export abstract class AbstractMetadataCache<TFile> {
 	}
 
 	/** Add or update a file in the cache with full index maintenance */
-	setFile(path: string, file: TFile): void {
+	setFile(path: string, file: TFile, pathAuthority: PathAuthority = "requested_echo"): void {
 		if (this.isReserved(path)) return;
-		const isNew = !this.pathToFile.has(path);
-		this.pathToFile.set(path, file);
-		this.idToPath.set(this.extractId(file), path);
-		if (this.isFolderEntry(file)) {
-			this.folders.add(path);
+		const id = this.extractId(file);
+		const incomingIsFolder = this.isFolderEntry(file);
+		const oldPath = this.idToPath.get(id);
+		const occupant = this.pathToFile.get(path);
+
+		// Provider upserts may re-key a stable id without a preceding tombstone.
+		// Keep the path and identity indexes bijective at their single mutation seam.
+		if (occupant && this.extractId(occupant) !== id) {
+			this.removeTree(path);
 		}
-		if (isNew) this.addToIndex(path);
+
+		if (oldPath && oldPath !== path) {
+			const wasFolder = this.folders.has(oldPath);
+			if (wasFolder && !incomingIsFolder) {
+				this.removeTree(oldPath);
+			} else {
+				this.removeFromIndex(oldPath);
+				this.pathToFile.delete(oldPath);
+				this.pathAuthorities.delete(oldPath);
+				this.idToPath.delete(id);
+				this.folders.delete(oldPath);
+				if (wasFolder) this.rewriteChildPaths(oldPath, path);
+			}
+		} else if (oldPath === path && this.folders.has(path) && !incomingIsFolder) {
+			this.removeTree(path);
+		}
+
+		this.pathToFile.set(path, file);
+		this.pathAuthorities.set(path, pathAuthority);
+		this.idToPath.set(id, path);
+		if (incomingIsFolder) {
+			this.folders.add(path);
+		} else {
+			this.folders.delete(path);
+		}
+		this.addToIndex(path);
 	}
 
 	/** Remove a single entry from pathToFile/idToPath/folders and the children index */
@@ -108,30 +142,37 @@ export abstract class AbstractMetadataCache<TFile> {
 		if (file) this.idToPath.delete(this.extractId(file));
 		this.removeFromIndex(path);
 		this.pathToFile.delete(path);
+		this.pathAuthorities.delete(path);
 		this.folders.delete(path);
 	}
 
 	/** Bulk-load files into the cache. Does NOT clear — callers clear() first when rebuilding. */
-	bulkLoad(items: Iterable<[string, TFile]>): void {
-		for (const [path, file] of items) {
+	bulkLoad(items: Iterable<[string, TFile, PathAuthority?]>): void {
+		const records = [...items];
+		const seenIds = new Map<string, string>();
+		for (const [path, file] of records) {
 			if (this.isReserved(path)) continue;
-			this.pathToFile.set(path, file);
-			this.idToPath.set(this.extractId(file), path);
-			if (this.isFolderEntry(file)) {
-				this.folders.add(path);
+			const id = this.extractId(file);
+			const priorPath = seenIds.get(id);
+			if (priorPath !== undefined) {
+				throw new Error(
+					`Metadata cache contains duplicate stable id "${id}" at "${priorPath}" and "${path}"`,
+				);
 			}
+			seenIds.set(id, path);
 		}
-		for (const path of this.pathToFile.keys()) {
-			this.addToIndex(path);
+		for (const [path, file, pathAuthority = "requested_echo"] of records) {
+			this.setFile(path, file, pathAuthority);
 		}
 	}
 
 	/** Return a snapshot of all records for persistence */
-	exportRecords(): { path: string; file: TFile; isFolder: boolean }[] {
+	exportRecords(): { path: string; file: TFile; isFolder: boolean; pathAuthority: PathAuthority }[] {
 		return [...this.pathToFile.entries()].map(([path, file]) => ({
 			path,
 			file,
 			isFolder: this.folders.has(path),
+			pathAuthority: this.getStoredPathAuthority(path),
 		}));
 	}
 
@@ -147,6 +188,7 @@ export abstract class AbstractMetadataCache<TFile> {
 		this.idToPath.clear();
 		this.folders.clear();
 		this.children.clear();
+		this.pathAuthorities.clear();
 	}
 
 	/** Add a path to the children index */
@@ -202,13 +244,25 @@ export abstract class AbstractMetadataCache<TFile> {
 		}
 
 		const resolvedPaths = new Map<string, string>();
+		const resolvedAuthorities = new Map<string, PathAuthority>();
 		const resolved: [string, TFile][] = [];
 		for (const file of files) {
 			const path = this.resolveFilePathCached(file, byId, resolvedPaths, new Set());
 			resolved.push([path, file]);
+			resolvePathAuthority(file, {
+				rootFolderId: this.rootFolderId,
+				byId,
+				extractId: (entry) => this.extractId(entry),
+				extractParentIds: (entry) => this.extractParentIds(entry),
+				resolved: resolvedAuthorities,
+			}, new Set());
 		}
 
-		this.bulkLoad(resolved);
+		this.bulkLoad(resolved.map(([path, file]): [string, TFile, PathAuthority] => [
+			path,
+			file,
+			resolvedAuthorities.get(this.extractId(file)) ?? "requested_echo",
+		]));
 	}
 
 	/** Resolve a file's relative path using the existing cache */
@@ -218,13 +272,10 @@ export abstract class AbstractMetadataCache<TFile> {
 
 		const parentId = this.findRelevantParentId(parents, this.idToPath);
 		if (!parentId) return null;
-		if (parentId === this.rootFolderId) {
-			return this.extractName(file);
-		}
+		if (parentId === this.rootFolderId) return this.extractName(file);
 
 		const parentPath = this.idToPath.get(parentId);
 		if (!parentPath) return null;
-
 		return `${parentPath}/${this.extractName(file)}`;
 	}
 
@@ -286,10 +337,13 @@ export abstract class AbstractMetadataCache<TFile> {
 		for (const childPath of descendants) {
 			const childFile = this.pathToFile.get(childPath);
 			if (!childFile) continue;
+			const childAuthority = resolveStoredPathAuthority(childPath, this.pathAuthorities);
 			const newChildPath = newPath + "/" + childPath.substring(oldPrefix.length);
 			this.removeFromIndex(childPath);
 			this.pathToFile.delete(childPath);
+			this.pathAuthorities.delete(childPath);
 			this.pathToFile.set(newChildPath, childFile);
+			this.pathAuthorities.set(newChildPath, childAuthority);
 			this.idToPath.set(this.extractId(childFile), newChildPath);
 			this.addToIndex(newChildPath);
 			if (this.folders.delete(childPath)) {
@@ -348,35 +402,9 @@ export abstract class AbstractMetadataCache<TFile> {
 			return;
 		}
 
-		// A different entry already occupies this path with no preceding `deleted`
-		// tombstone (the provider didn't emit the delete first, or batched them out
-		// of order). Evict it — and, if it was a folder, its whole cached subtree —
-		// so stale descendants don't linger as phantom paths, and idToPath doesn't
-		// keep pointing the displaced id at this path.
-		const occupant = this.pathToFile.get(path);
-		if (occupant && this.extractId(occupant) !== id) {
-			this.removeTree(path);
-		}
-
-		// Remove old mapping if ID was at a different path (rename/move)
-		if (oldPath && oldPath !== path) {
-			const wasFolder = this.folders.has(oldPath);
-			this.removeFromIndex(oldPath);
-			this.pathToFile.delete(oldPath);
-			this.idToPath.delete(id);
-			this.folders.delete(oldPath);
-			if (wasFolder) {
-				this.rewriteChildPaths(oldPath, path);
-			}
-		}
-
-		this.pathToFile.set(path, file);
-		this.idToPath.set(id, path);
-		this.addToIndex(path);
-		if (this.isFolderEntry(file)) {
-			this.folders.add(path);
-		} else {
-			this.folders.delete(path);
-		}
+		// The delta names this entry and its parent id directly, so the entry's own
+		// spelling is provider-resolved. getPathAuthority() still projects any
+		// unresolved ancestor over it until that ancestor is confirmed.
+		this.setFile(path, file, "actual_resolved");
 	}
 }

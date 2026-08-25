@@ -1,14 +1,18 @@
+import "fake-indexeddb/auto";
 import { afterAll, beforeAll, describe } from "vitest";
 import { OneDriveAuth } from "../src/fs/onedrive/auth";
 import { OneDriveClient } from "../src/fs/onedrive/client";
 import { OneDriveFs } from "../src/fs/onedrive/index";
+import type { OneDriveItem } from "../src/fs/onedrive/types";
 import { runIFileSystemContract } from "../src/fs/ifilesystem-contract.test";
+import { MetadataStore } from "../src/store/metadata-store";
 import { readCreds } from "./helpers/env";
 import {
 	cleanupOneDriveParent,
 	makeOneDriveChild,
 	makeOneDriveParent,
 } from "./helpers/isolation";
+import { runRenameSafetyE2E } from "./helpers/rename-safety";
 
 /**
  * Opt-in real-cloud e2e (ADR 0003): runs the SAME `runIFileSystemContract` the
@@ -73,6 +77,24 @@ if (!creds || !clientId) {
 		// precision (this e2e proved 12345 → 12000), so it round-trips only to the
 		// second: mtimePrecisionMs 1000. The OneDrive fake echoes full ms, hence the
 		// unit contract stays exact and only this live run carries the precision knob.
-		{ computesHashOnStat: false, mtimePrecisionMs: 1000 },
+		{ computesHashOnStat: false, mtimePrecisionMs: 1000, stableIdentity: true },
 	);
+
+	runRenameSafetyE2E("OneDriveFs", {
+		backendType: "onedrive",
+		makeBackend: async () => {
+			const childId = await makeOneDriveChild(client, parentId);
+			const store = new MetadataStore<OneDriveItem>(crypto.randomUUID(), {
+				dbNamePrefix: "air-sync-onedrive-e2e-rename",
+				version: 1,
+			});
+			const fs = new OneDriveFs(client, childId, undefined, store);
+			return {
+				fs,
+				renameOutOfBand: async (file, newPath) => {
+					await client.move(file.identityKey!, newPath, undefined);
+				},
+			};
+		},
+	});
 }

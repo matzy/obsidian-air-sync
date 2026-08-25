@@ -101,6 +101,8 @@ export class OneDriveFs extends CachingRemoteFs<OneDriveItem> {
 		const hash = await sha256(content);
 		return {
 			path,
+			pathAuthority: "requested_echo",
+			identityKey: item.id,
 			isDirectory: false,
 			size: content.byteLength,
 			mtime: itemMtime(item),
@@ -115,7 +117,16 @@ export class OneDriveFs extends CachingRemoteFs<OneDriveItem> {
 		return this.cacheMutex.run(async () => {
 			await this.ensureInitialized();
 			const folderId = await this.ensureFolder(path);
-			return { path, isDirectory: true, size: 0, mtime: 0, hash: "", backendMeta: { oneDriveId: folderId } };
+			return {
+				path,
+				pathAuthority: "requested_echo",
+				identityKey: folderId,
+				isDirectory: true,
+				size: 0,
+				mtime: 0,
+				hash: "",
+				backendMeta: { oneDriveId: folderId },
+			};
 		});
 	}
 

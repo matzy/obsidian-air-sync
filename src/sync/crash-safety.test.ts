@@ -6,12 +6,14 @@ import { executePlan } from "./plan-executor";
 import type { ExecutionResult } from "./plan-executor";
 import { LocalChangeTracker } from "./local-tracker";
 import {
-	createMockFs,
+	createMockLocalFs, createMockRemoteFs, type MockFileSystem,
 	createMockStateStore,
 	addFile,
 	readText,
 } from "../__mocks__/sync-test-helpers";
 import type { SyncPlan } from "./types";
+import { admitDestructivePlan, captureCycleAdmissionSnapshot } from "./plan-admission";
+import { projectScope } from "./scope-projection";
 
 /**
  * Crash-safety contract (ARCHITECTURE.md design principle #5,
@@ -25,16 +27,16 @@ import type { SyncPlan } from "./types";
  */
 
 interface Env {
-	localFs: ReturnType<typeof createMockFs>;
-	remoteFs: ReturnType<typeof createMockFs>;
+	localFs: MockFileSystem;
+	remoteFs: MockFileSystem;
 	stateStore: ReturnType<typeof createMockStateStore>;
 	localTracker: LocalChangeTracker;
 }
 
 function makeEnv(): Env {
 	return {
-		localFs: createMockFs("local"),
-		remoteFs: createMockFs("remote"),
+		localFs: createMockLocalFs(),
+		remoteFs: createMockRemoteFs(),
 		stateStore: createMockStateStore(),
 		localTracker: new LocalChangeTracker(),
 	};
@@ -56,11 +58,13 @@ async function runCycle(
 	});
 	const plan = refinePlan(
 		planSync(changeSet.entries),
-		snapshot.renamePairs,
-		snapshot.folderRenamePairs,
-		changeSet.remoteRenamePairs,
+		changeSet.identityEvidence,
 	);
-	const result = await executePlan(plan, {
+	const scope = projectScope(changeSet, { classifyPath: () => "included" });
+	const admission = admitDestructivePlan(captureCycleAdmissionSnapshot(
+		plan, changeSet.identityEvidence, changeSet.observations, scope, "crash-safety-test",
+	));
+	const result = await executePlan(admission.executable, {
 		localFs,
 		remoteFs,
 		committer: { stateStore },

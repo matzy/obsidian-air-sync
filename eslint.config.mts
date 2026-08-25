@@ -47,6 +47,14 @@ const FS_INTERFACE_IMPORT = {
 		"Design principle #4 (pipeline as data): pure transform modules must not depend on IFileSystem. Operate on the FileEntity/SyncRecord data passed in.",
 };
 
+/** Sync tests must select a filesystem role, not hand-author stronger path evidence. */
+const RAW_SYNC_MOCK_FS_IMPORT = {
+	name: "../__mocks__/sync-test-helpers",
+	importNames: ["createMockFs"],
+	message:
+		"Use createMockLocalFs() or createMockRemoteFs() so mutation path authority matches the producer role. The raw constructor is reserved for mock contract tests.",
+};
+
 /**
  * The pure transform stages of the sync pipeline. Each is a deterministic
  * `data → data` function (principle #4): no I/O, no clock, no randomness.
@@ -228,6 +236,20 @@ export default defineConfig(
 		},
 	},
 	{
+		// Producer-qualified path evidence: sync tests choose a local/remote role;
+		// only the dedicated mock contract may select authority directly.
+		files: ["src/sync/**/*.test.ts"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{
+					paths: [AXIOS_IMPORT, RAW_SYNC_MOCK_FS_IMPORT],
+					patterns: [NODE_API_IMPORTS, BACKEND_SPECIFIC_IMPORTS],
+				},
+			],
+		},
+	},
+	{
 		// Principle #7 (single responsibility per module). This cap is a PROMPT to
 		// consider a responsibility split, not a line-count target to minimize
 		// against — counting code lines only (comments/blanks excluded). When a file
@@ -253,20 +275,25 @@ export default defineConfig(
 		rules: { "max-lines": ["error", { max: 337, skipBlankLines: true, skipComments: true }] },
 	},
 	{
-		// Re-pinned from 374 for the scope-fingerprint fix (compute + compare the
-		// current vs committed scope fingerprint in runSync, thread it through
-		// executeWithRetry/executeSyncOnce to commitCheckpoint) — cohesive addition
-		// to the existing cold-reconcile decision, not a natural split point.
+		// Re-pinned from 385: the explicit pre-Admission try/catch and the single
+		// admitDestructivePlan cut point must remain together in the composition root;
+		// extracting either would hide which exceptions own COLD evidence recovery.
 		files: ["src/sync/orchestrator.ts"],
-		rules: { "max-lines": ["error", { max: 385, skipBlankLines: true, skipComments: true }] },
+		rules: { "max-lines": ["error", { max: 406, skipBlankLines: true, skipComments: true }] },
 	},
 	{
-		// New override for the scope-fingerprint fix: CachingRemoteFs now persists
-		// a scope fingerprint alongside the delta cursor (getScopeFingerprint,
-		// commitCheckpoint's context param, resetCheckpoint clearing it) — cohesive
-		// addition to the existing checkpoint machinery, not a natural split point.
+		// Admission is the one pure owner of final destructive authorization. Splitting
+		// its component policy from disposition issuance would add an internal policy
+		// boundary and make the safety decision span modules solely to satisfy a count.
+		files: ["src/sync/plan-admission.ts"],
+		rules: { "max-lines": ["error", { max: 398, skipBlankLines: true, skipComments: true }] },
+	},
+	{
+		// Re-pinned from 317: replay-free post-delta snapshots must stay under the
+		// same cache mutex/cursor owner as getChangedPaths. Splitting that method
+		// would break the atomic observation boundary this class enforces.
 		files: ["src/fs/caching/remote-fs.ts"],
-		rules: { "max-lines": ["error", { max: 317, skipBlankLines: true, skipComments: true }] },
+		rules: { "max-lines": ["error", { max: 326, skipBlankLines: true, skipComments: true }] },
 	},
 	{
 		// Re-pinned from 303 for the top-level Google Picker callback. The

@@ -1,12 +1,17 @@
 import { IDBHelper, sanitizeDbName } from "./idb-helper";
+import type { PathAuthority } from "../fs/types";
 
 const FILES_STORE = "files";
 const META_STORE = "meta";
+
+/** Bump whenever persisted file-record semantics require a cold cache rebuild. */
+export const METADATA_CACHE_VERSION = 2;
 
 export interface FileRecord<T> {
 	path: string;
 	file: T;
 	isFolder: boolean;
+	pathAuthority?: PathAuthority;
 }
 
 export interface MetadataStoreConfig {
@@ -106,6 +111,22 @@ export class MetadataStore<T> {
 		return this.helper.runTransaction(META_STORE, "readonly", (tx) => {
 			const req = tx.objectStore(META_STORE).get(key);
 			return () => (req.result as { key: string; value: string } | undefined)?.value;
+		});
+	}
+
+	/** Persist one backend-owned operation marker without replacing cache metadata. */
+	async setMeta(key: string, value: string): Promise<void> {
+		await this.helper.runTransaction(META_STORE, "readwrite", (tx) => {
+			tx.objectStore(META_STORE).put({ key, value });
+			return () => {};
+		});
+	}
+
+	/** Remove one backend-owned operation marker. */
+	async deleteMeta(key: string): Promise<void> {
+		await this.helper.runTransaction(META_STORE, "readwrite", (tx) => {
+			tx.objectStore(META_STORE).delete(key);
+			return () => {};
 		});
 	}
 

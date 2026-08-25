@@ -1,5 +1,5 @@
 import type { IFileSystem } from "../fs/interface";
-import type { FileEntity } from "../fs/types";
+import type { FileEntity, PathAuthority } from "../fs/types";
 import type { RenamePair, SyncRecord } from "../sync/types";
 import type { SyncStateStore } from "../sync/state";
 import type { AirSyncSettings } from "../settings";
@@ -17,9 +17,14 @@ import { normalizeSyncPath, validateRename } from "../utils/path";
  * when an accurate hash is needed). The `.files` map is exposed so tests can
  * seed/inspect state directly (e.g. attach a `remoteChecksum`).
  */
-export function createMockFs(name: string): IFileSystem & {
+export type MockFileSystem = IFileSystem & {
 	files: Map<string, { content: ArrayBuffer; entity: FileEntity }>;
-} {
+};
+
+export function createMockFs(
+	name: string,
+	mutationPathAuthority: PathAuthority,
+): MockFileSystem {
 	const files = new Map<
 		string,
 		{ content: ArrayBuffer; entity: FileEntity }
@@ -42,6 +47,7 @@ export function createMockFs(name: string): IFileSystem & {
 					content: new ArrayBuffer(0),
 					entity: {
 						path: current,
+						pathAuthority: mutationPathAuthority,
 						isDirectory: true,
 						size: 0,
 						mtime: 0,
@@ -50,7 +56,7 @@ export function createMockFs(name: string): IFileSystem & {
 				});
 			}
 		}
-		return { path, isDirectory: true, size: 0, mtime: 0, hash: "" };
+		return { path, pathAuthority: "requested_echo", isDirectory: true, size: 0, mtime: 0, hash: "" };
 	}
 
 	function ensureParents(path: string): void {
@@ -102,6 +108,7 @@ export function createMockFs(name: string): IFileSystem & {
 			ensureParents(path);
 			const entity: FileEntity = {
 				path,
+				pathAuthority: mutationPathAuthority,
 				isDirectory: false,
 				size: content.byteLength,
 				mtime,
@@ -111,8 +118,10 @@ export function createMockFs(name: string): IFileSystem & {
 			// mutation of the caller's buffer must not change stored content.
 			files.set(path, { content: content.slice(0), entity });
 			// list() reads the stored entity (hash ""); the return value carries the
-			// computed hash, mirroring a real backend's write().
-			return { ...entity, hash: await sha256(content) };
+			// computed hash, mirroring a real backend's write(). Remote-cache tests
+			// inject requested_echo so later stat/list cannot silently claim that a
+			// mutation path was producer-resolved; local tests retain actual_resolved.
+			return { ...entity, pathAuthority: "requested_echo", hash: await sha256(content) };
 		},
 		async mkdir(path: string) {
 			// Stays async so mkdirInternal's type-collision throw rejects.
@@ -178,6 +187,9 @@ export function createMockFs(name: string): IFileSystem & {
 					modified: [] as string[],
 					deleted: [] as string[],
 				}),
+			listCurrentSnapshot: () => Promise.resolve(
+				Array.from(files.values()).map((entry) => ({ ...entry.entity })),
+			),
 			// Load-bearing default: true ⇒ orchestrator's `checkpoint ? !hasCheckpoint() : false`
 			// is false ⇒ no forced cold scan, so default tests stay WARM/COLD (mirroring the
 			// pre-capability mock, which had no hasCheckpoint and short-circuited to false).
@@ -187,6 +199,27 @@ export function createMockFs(name: string): IFileSystem & {
 			commitCheckpoint: () => Promise.resolve(),
 		},
 	};
+}
+
+/** Local mutations are observed from the authoritative vault adapter. */
+export function createMockLocalFs(): MockFileSystem {
+	return createMockFs("local", "actual_resolved");
+}
+
+/** Remote mutations remain request echoes until a test models provider confirmation. */
+export function createMockRemoteFs(): MockFileSystem {
+	return createMockFs("remote", "requested_echo");
+}
+
+/** Model a provider observation that confirms one remote path and its descendants. */
+export function confirmMockPath(fs: MockFileSystem, path: string): void {
+	path = normalizeSyncPath(path);
+	const prefix = path + "/";
+	for (const [candidate, entry] of fs.files) {
+		if (candidate === path || candidate.startsWith(prefix)) {
+			entry.entity.pathAuthority = "actual_resolved";
+		}
+	}
 }
 
 /** In-memory mock SyncStateStore for unit tests */
@@ -301,6 +334,7 @@ export function addFile(
 			if (!fs.files.has(current)) {
 				const dirEntity: FileEntity = {
 					path: current,
+					pathAuthority: "actual_resolved",
 					isDirectory: true,
 					size: 0,
 					mtime: 0,
@@ -315,6 +349,7 @@ export function addFile(
 	}
 	const entity: FileEntity = {
 		path,
+		pathAuthority: "actual_resolved",
 		isDirectory: false,
 		size: buf.byteLength,
 		mtime,

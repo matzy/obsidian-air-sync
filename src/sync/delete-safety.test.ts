@@ -4,13 +4,14 @@ import { executePlan } from "./plan-executor";
 import { collectChanges } from "./change-detector";
 import { LocalChangeTracker } from "./local-tracker";
 import {
-	createMockFs,
+	createMockLocalFs, createMockRemoteFs,
 	createMockStateStore,
 	addFile,
 } from "../__mocks__/sync-test-helpers";
 import type { MixedEntity, SyncRecord } from "./types";
 import type { FileEntity } from "../fs/types";
 import { sha256 } from "../utils/hash";
+import { admitDestructivePlan, captureCycleAdmissionSnapshot } from "./plan-admission";
 
 /**
  * Delete-safety contracts.
@@ -66,14 +67,21 @@ describe("§2-1 (fixed): a lone deletion is no longer silently aborted", () => {
 	});
 
 	it("a lone delete_remote actually executes (no abort path remains)", async () => {
-		const localFs = createMockFs("local");
-		const remoteFs = createMockFs("remote");
+		const localFs = createMockLocalFs();
+		const remoteFs = createMockRemoteFs();
 		const stateStore = createMockStateStore();
 		addFile(remoteFs, "note.md", CONTENT, 1000);
 		await stateStore.put(baselineRecord("note.md"));
 
-		const result = await executePlan(
+		const admission = admitDestructivePlan(captureCycleAdmissionSnapshot(
 			{ actions: [{ path: "note.md", action: "delete_remote" }] },
+			[],
+			[{ kind: "absent", side: "local", requestedPath: "note.md", authority: "stat" }],
+			{ byEndpoint: new Map([["note.md", "included"]]) },
+			"delete-safety-test",
+		));
+		const result = await executePlan(
+			admission.executable,
 			{
 				localFs,
 				remoteFs,
@@ -95,8 +103,8 @@ describe("phantom warm deletion: an incomplete listing does not mass-delete", ()
 	// against the authoritative filesystem; the files exist on disk, so no
 	// deletion is planned. This is prevention at the source — not recovery.
 	it("a warm sync whose listing omits on-disk files plans zero delete_remote", async () => {
-		const localFs = createMockFs("local");
-		const remoteFs = createMockFs("remote");
+		const localFs = createMockLocalFs();
+		const remoteFs = createMockRemoteFs();
 		const stateStore = createMockStateStore();
 		const localTracker = new LocalChangeTracker();
 
@@ -130,8 +138,8 @@ describe("phantom warm deletion: an incomplete listing does not mass-delete", ()
 	});
 
 	it("a genuinely deleted file (absent on disk too) is still planned as delete_remote", async () => {
-		const localFs = createMockFs("local");
-		const remoteFs = createMockFs("remote");
+		const localFs = createMockLocalFs();
+		const remoteFs = createMockRemoteFs();
 		const stateStore = createMockStateStore();
 		const localTracker = new LocalChangeTracker();
 

@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { Logger } from "../../logging/logger";
 import {
 	assertOk,
 	assertDropboxTokenResponse,
@@ -25,6 +26,45 @@ describe("assertOk", () => {
 		expect(() =>
 			assertOk({ status: 409, json: { error_summary: "invalid_access_token/..", error: { ".tag": "invalid_access_token" } } }, "op"),
 		).toThrow(AuthError);
+	});
+
+	// Dropbox puts a display string in `user_message` and may add fields this
+	// codebase does not model; distilling to `error_summary` used to drop both.
+	it("carries the whole Dropbox error body, unmodelled fields included", () => {
+		let thrown: unknown;
+		try {
+			assertOk(
+				{
+					status: 409,
+					json: {
+						error_summary: "path/conflict/file/.",
+						error: { ".tag": "path" },
+						user_message: { text: "A file already exists there.", locale: "en" },
+					},
+				},
+				"createFolder",
+			);
+		} catch (err) {
+			thrown = err;
+		}
+		const message = (thrown as Error).message;
+		expect(message).toContain("409");
+		expect(message).toContain("path/conflict/file/.");
+		expect(message).toContain("A file already exists there.");
+		// `summary` stays exposed for callers that branch on it (reset, path/conflict).
+		expect((thrown as DropboxApiError).summary).toBe("path/conflict/file/.");
+	});
+
+	it("logs the whole error response before throwing", () => {
+		const error = vi.fn();
+		const logger = { error } as unknown as Logger;
+		expect(() =>
+			assertOk({ status: 429, json: { error_summary: "too_many_requests/." } }, "listFolder", logger),
+		).toThrow(DropboxApiError);
+		expect(error).toHaveBeenCalledTimes(1);
+		const [, context] = error.mock.calls[0] as [string, Record<string, unknown>];
+		expect(context).toMatchObject({ operation: "listFolder", status: 429 });
+		expect(context.body).toContain("too_many_requests");
 	});
 
 	it("throws a DropboxApiError carrying status + summary for a 409", () => {
@@ -92,6 +132,8 @@ describe("dropboxEntryToEntity", () => {
 		const entity = dropboxEntryToEntity("notes/a.md", dbxFile("1", "/root/notes/a.md", { content_hash: "abc", size: 7, server_modified: "2024-02-02T00:00:00Z" }));
 		expect(entity).toMatchObject({
 			path: "notes/a.md",
+			pathAuthority: "requested_echo",
+			identityKey: "id:1",
 			isDirectory: false,
 			size: 7,
 			hash: "",
@@ -103,7 +145,29 @@ describe("dropboxEntryToEntity", () => {
 
 	it("maps a folder to a directory entity with no checksum", () => {
 		const entity = dropboxEntryToEntity("notes", dbxFolder("9", "/root/notes"));
-		expect(entity).toMatchObject({ path: "notes", isDirectory: true, size: 0, mtime: 0, hash: "" });
+		expect(entity).toMatchObject({
+			path: "notes",
+			pathAuthority: "requested_echo",
+			identityKey: "id:9",
+			isDirectory: true,
+			size: 0,
+			mtime: 0,
+			hash: "",
+		});
 		expect(entity.remoteChecksum).toBeUndefined();
+	});
+
+	it("keeps identity absent when Dropbox omits the stable id", () => {
+		const file = dropboxEntryToEntity(
+			"notes/a.md",
+			{ ...dbxFile("1", "/root/notes/a.md"), id: undefined },
+		);
+		const folder = dropboxEntryToEntity(
+			"notes",
+			{ ...dbxFolder("9", "/root/notes"), id: undefined },
+		);
+
+		expect(file.identityKey).toBeUndefined();
+		expect(folder.identityKey).toBeUndefined();
 	});
 });

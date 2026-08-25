@@ -151,6 +151,8 @@ describe("GoogleDriveFs.write remoteChecksum", () => {
 		const content = new TextEncoder().encode("hello").buffer.slice(0);
 		const result = await fs.write("test.md", content, Date.now());
 
+		expect(result.pathAuthority).toBe("requested_echo");
+		expect(result.identityKey).toBe("file1");
 		expect(result.remoteChecksum).toEqual({ algo: "md5", value: "abc123hash" });
 		expect(result.backendMeta?.googleDriveId).toBe("file1");
 
@@ -186,6 +188,31 @@ describe("GoogleDriveFs.write remoteChecksum", () => {
 		expect(result.backendMeta?.googleDriveId).toBe("doc1");
 
 		mockRequestUrl.mockRestore();
+	});
+});
+
+describe("GoogleDriveFs mutation provenance", () => {
+	it("returns the native folder identity without claiming requested casing was resolved", async () => {
+		const { GoogleDriveFs } = await import("./index");
+		const mockClient = {
+			findChildByName: vi.fn().mockResolvedValue(null),
+			createFolder: vi.fn().mockResolvedValue({
+				id: "folder1",
+				name: "Docs",
+				mimeType: "application/vnd.google-apps.folder",
+				parents: ["root"],
+			}),
+		} as never;
+		const fs = new GoogleDriveFs(mockClient, "root");
+		(fs as unknown as GoogleDriveFsInternal).initialized = true;
+
+		const entity = await fs.mkdir("Docs");
+
+		expect(entity).toMatchObject({
+			path: "Docs",
+			pathAuthority: "requested_echo",
+			identityKey: "folder1",
+		});
 	});
 });
 
@@ -699,10 +726,59 @@ describe("GoogleDriveFs cache persistence", () => {
 
 		expect(files2).toHaveLength(2);
 		expect(files2.map((f) => f.path).sort()).toEqual(["docs", "docs/note.md"]);
+		expect(files2.every((file) => file.pathAuthority === "actual_resolved")).toBe(true);
 		// listAllFiles should NOT have been called (loaded from cache)
 		expect(listAllFilesSpy).not.toHaveBeenCalled();
 		// The #3 cursor is the single source of truth — never clobbered by #2.
 		expect(fs2.changesPageToken).toBe("token-abc");
+
+		await store.close();
+	});
+
+	it("rejects duplicate-id persisted cache and replaces its checkpoint from an authoritative full scan", async () => {
+		const { GoogleDriveFs } = await import("./index");
+		const { MetadataStore } = await import("../../store/metadata-store");
+		const store = new MetadataStore<GoogleDriveFile>("persist-duplicate-id", {
+			dbNamePrefix: "air-sync-googledrive",
+			version: 1,
+		});
+		await store.open();
+		await store.saveAll([
+			{
+				path: "a-new.txt",
+				file: { id: "f1", name: "a-new.txt", mimeType: "text/plain", parents: ["root"] },
+				isFolder: false,
+			},
+			{
+				path: "z-old.txt",
+				file: { id: "f1", name: "z-old.txt", mimeType: "text/plain", parents: ["root"] },
+				isFolder: false,
+			},
+		], new Map([["changesStartPageToken", "stale-token"]]));
+
+		const listAllFiles = vi.fn().mockResolvedValue([
+			{ id: "f1", name: "a-new.txt", mimeType: "text/plain", parents: ["root"] },
+		]);
+		const getChangesStartToken = vi.fn().mockResolvedValue("fresh-token");
+		const listChanges = vi.fn();
+		const fs = new GoogleDriveFs({
+			listAllFiles,
+			getChangesStartToken,
+			listChanges,
+		} as never, "root", undefined, store);
+
+		const files = await fs.list();
+
+		expect(files.map((file) => file.path)).toEqual(["a-new.txt"]);
+		expect(listAllFiles).toHaveBeenCalledOnce();
+		expect(getChangesStartToken).toHaveBeenCalledOnce();
+		expect(listChanges).not.toHaveBeenCalled();
+		expect(fs.changesPageToken).toBe("fresh-token");
+
+		await fs.commitCheckpoint();
+		const persisted = await store.loadAll();
+		expect(persisted.files.map((record) => record.path)).toEqual(["a-new.txt"]);
+		expect(persisted.meta.get("changesStartPageToken")).toBe("fresh-token");
 
 		await store.close();
 	});
