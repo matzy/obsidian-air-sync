@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-module.local/docs/issue.schema.json",
+  "title": "Issue (out-of-scope capture: bug or plan)",
+  "description": "作業中に発見した session scope 外の欠陥・機会を、別セッションで着手可能な形に永続化する queue。内容契約と起票・triage・閉包の判断は skills/dev-docs/knowledge/issue.md が正本。",
+  "allOf": [
+    {
+      "$ref": "_common.schema.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "done"
+          }
+        }
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "disposition_target"
+            ]
+          },
+          {
+            "required": [
+              "disposition_reason"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "disposition_reason"
+        ]
+      }
+    }
+  ],
+  "type": "object",
+  "unevaluatedProperties": false,
+  "properties": {
+    "kind": {
+      "const": "issue"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "done",
+        "rejected"
+      ]
+    },
+    "issue_type": {
+      "enum": [
+        "bug",
+        "plan"
+      ],
+      "description": "bug = 既存の期待 (仕様/テスト/宣言された invariant) との乖離。plan = 新しい機会・改善・未着手タスク。"
+    },
+    "subject_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "対象の repo 相対 path。dev-evidence が change surface との重なりで想起する。"
+    },
+    "disposition_target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "解決の正体を指す doc ID (解決した change / 昇格先 ADR / design)。done への遷移で disposition_reason との少なくとも一方が必須。"
+    },
+    "disposition_reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "change を立てずに解決した場合の修正内容、または rejected の理由。rejected への遷移で必須。"
+    }
+  },
+  "required": [
+    "issue_type"
+  ]
+}
