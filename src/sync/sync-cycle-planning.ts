@@ -3,12 +3,8 @@ import type { ChangeSet } from "./change-detector";
 import { planSync } from "./decision-engine";
 import type { AdmissionResult } from "./plan-admission";
 import { captureCycleAdmissionSnapshot } from "./plan-admission";
-import {
-	applyRenameDebtScope,
-	collectLocalRenameDebts,
-	mergeRenameDebtEvidence,
-} from "./rename-debt";
-import { refinePlan } from "./rename-optimizer";
+import { mergeRenameDebtEvidence, renameDebtEvidence } from "./rename-debt";
+import { renameEvidenceKey } from "./identity-evidence";
 import { projectScope, type ScopeProjectionPolicy } from "./scope-projection";
 import type { RenameDebt } from "./state";
 
@@ -26,6 +22,8 @@ export function logChangeDetection(
 		remoteOnly: remoteOnlyPaths.length,
 		both: changeSet.entries.filter((entry) => entry.local && entry.remote).length,
 		enriched: changeSet.entries.filter((entry) => entry.local?.hash && !entry.prevSync).length,
+		hashEnrichmentCandidates: changeSet.hashEnrichment?.candidates ?? 0,
+		hashEnrichmentMatches: changeSet.hashEnrichment?.matches ?? 0,
 		renamePairs: renamePairs.size,
 	});
 	if (remoteOnlyPaths.length > 0) logger?.debug("Remote-only paths", { paths: remoteOnlyPaths });
@@ -55,7 +53,7 @@ export function prepareSyncCycleSnapshot(
 		...changeSet,
 		identityEvidence: mergeRenameDebtEvidence(changeSet.identityEvidence, persistedDebts),
 	};
-	const scopeProjection = applyRenameDebtScope(projectScope(completeChangeSet, policy), persistedDebts);
+	const scopeProjection = projectScope(completeChangeSet, policy);
 	const filtered = completeChangeSet.entries.filter((entry) =>
 		scopeProjection.byEndpoint.get(entry.path) === "included");
 	if (filtered.length !== completeChangeSet.entries.length) {
@@ -65,27 +63,17 @@ export function prepareSyncCycleSnapshot(
 			excluded: completeChangeSet.entries.length - filtered.length,
 		});
 	}
-	const plan = refinePlan(
-		planSync(filtered),
-		completeChangeSet.identityEvidence,
-		logger,
-	);
+	const plan = planSync(filtered);
 	const snapshot = captureCycleAdmissionSnapshot(
 		plan,
 		completeChangeSet.identityEvidence,
 		completeChangeSet.observations,
 		scopeProjection,
 		namespace,
+		completeChangeSet.entries.flatMap((entry) => entry.prevSync ? [entry.path] : []),
+		persistedDebts.map((debt) => renameEvidenceKey(renameDebtEvidence(debt))),
 	);
-	const localRenameDebts = collectLocalRenameDebts(
-		namespace,
-		completeChangeSet.identityEvidence,
-		scopeProjection,
-	);
-	return {
-		snapshot,
-		localRenameDebts,
-	};
+	return { snapshot };
 }
 
 export function logSyncCyclePlan(
@@ -93,11 +81,20 @@ export function logSyncCyclePlan(
 	admission: AdmissionResult,
 ): void {
 	const actionBreakdown: Record<string, number> = {};
-	for (const { action } of admission.snapshot.plan.actions) {
+	for (const { action } of admission.executable.actions) {
 		actionBreakdown[action] = (actionBreakdown[action] ?? 0) + 1;
 	}
 	logger?.info("Sync plan created", {
-		total: admission.snapshot.plan.actions.length,
+		total: admission.executable.actions.length,
+		proposed: admission.snapshot.plan.actions.length,
+		localRenameCandidates: admission.snapshot.localRenameCandidates.length,
+		freshLocalRenameCandidates: admission.snapshot.localRenameCandidates.filter((candidate) =>
+			!admission.snapshot.replayedLocalRenameKeys.has(renameEvidenceKey(candidate))).length,
+		replayedLocalRenameCandidates: admission.snapshot.replayedLocalRenameKeys.size,
+		persistedLocalRenameConstraints: admission.localRenameLifecycle.persistBeforeExecution.length,
+		nonBindingLocalRenameCandidates: admission.snapshot.localRenameCandidates.length -
+			admission.localRenameLifecycle.persistBeforeExecution.length,
+		releasableLocalRenameCandidates: admission.localRenameLifecycle.releaseAfterSafeCheckpoint.length,
 		...actionBreakdown,
 	});
 	for (const component of admission.deferred) {

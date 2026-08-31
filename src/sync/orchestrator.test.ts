@@ -75,7 +75,103 @@ function mockProvider(
 }
 
 describe("SyncOrchestrator", () => {
+	describe("cold hash-match diagnostics", () => {
+		it("reports checksum enrichment candidates and successful fast matches", async () => {
+			const localFs = createMockLocalFs();
+			const remoteFs = createMockRemoteFs();
+			const content = new TextEncoder().encode("same").buffer;
+			addFile(localFs, "same.md", "same");
+			const remote = addFile(remoteFs, "same.md", "same");
+			remote.remoteChecksum = { algo: "sha256", value: await sha256(content) };
+			const info = vi.fn();
+			const settings = baseMockSettings({
+				backendType: "test",
+				vaultId: `test-${Math.random()}`,
+				showSyncNotifications: true,
+			});
+			const deps = createDeps({
+				getSettings: () => settings,
+				localFs: () => localFs,
+				remoteFs: () => remoteFs,
+				logger: { debug: vi.fn(), info, warn: vi.fn(), error: vi.fn(), flush: vi.fn() } as unknown as Logger,
+			});
+			const orchestrator = new SyncOrchestrator(deps);
+
+			await orchestrator.runSync();
+
+			expect(info).toHaveBeenCalledWith("Change detection completed", expect.objectContaining({
+				temperature: "cold",
+				hashEnrichmentCandidates: 1,
+				hashEnrichmentMatches: 1,
+			}));
+			expect(deps.notify).toHaveBeenCalledWith("Sync: 1 matched");
+			await orchestrator.close();
+		});
+	});
+
 	describe("plan admission and durable rename debt", () => {
+		it("pushes a never-synchronized local rename without creating durable debt", async () => {
+			const localFs = createMockLocalFs();
+			const remoteFs = createMockRemoteFs();
+			const tracker = new LocalChangeTracker();
+			const settings = baseMockSettings({
+				backendType: "test", vaultId: `test-${Math.random()}`, lastSyncedIdentity: "test:root",
+			});
+			remoteFs.checkpoint!.hasCheckpoint = vi.fn().mockResolvedValue(true);
+			await localFs.write("final.md", new TextEncoder().encode("new").buffer, 1000);
+			tracker.markRenamed("final.md", "draft.md");
+			const info = vi.fn();
+			const deps = createDeps({
+				getSettings: () => settings, localFs: () => localFs, remoteFs: () => remoteFs,
+				localTracker: tracker,
+				logger: { debug: vi.fn(), info, warn: vi.fn(), error: vi.fn(), flush: vi.fn() } as unknown as Logger,
+			});
+			const orchestrator = new SyncOrchestrator(deps);
+
+			await orchestrator.runSync();
+
+			expect(readText(remoteFs, "final.md")).toBe("new");
+			expect(await orchestrator.state.getRenameDebts("test:root")).toEqual([]);
+			expect(tracker.getRenamePairs()).toEqual(new Map());
+			expect(deps.onStatusChange).toHaveBeenLastCalledWith("idle");
+			expect(info).toHaveBeenCalledWith("Sync plan created", expect.objectContaining({
+				freshLocalRenameCandidates: 1, replayedLocalRenameCandidates: 0,
+				nonBindingLocalRenameCandidates: 1, persistedLocalRenameConstraints: 0,
+			}));
+			await orchestrator.close();
+		});
+
+		it("re-evaluates and retires an existing false v6 debt after a clean push", async () => {
+			const localFs = createMockLocalFs();
+			const remoteFs = createMockRemoteFs();
+			const settings = baseMockSettings({
+				backendType: "test", vaultId: `test-${Math.random()}`, lastSyncedIdentity: "test:root",
+			});
+			remoteFs.checkpoint!.hasCheckpoint = vi.fn().mockResolvedValue(true);
+			await localFs.write("final.md", new TextEncoder().encode("new").buffer, 1000);
+			const info = vi.fn();
+			const deps = createDeps({
+				getSettings: () => settings, localFs: () => localFs, remoteFs: () => remoteFs,
+				logger: { debug: vi.fn(), info, warn: vi.fn(), error: vi.fn(), flush: vi.fn() } as unknown as Logger,
+			});
+			const orchestrator = new SyncOrchestrator(deps);
+			await orchestrator.state.upsertRenameDebts([{
+				namespace: "test:root", side: "local", oldPath: "draft.md", newPath: "final.md",
+				isFolder: false, oldDisposition: "included", newDisposition: "included",
+			}]);
+
+			await orchestrator.runSync();
+
+			expect(readText(remoteFs, "final.md")).toBe("new");
+			expect(await orchestrator.state.getRenameDebts("test:root")).toEqual([]);
+			expect(deps.onStatusChange).toHaveBeenLastCalledWith("idle");
+			expect(info).toHaveBeenCalledWith("Sync plan created", expect.objectContaining({
+				freshLocalRenameCandidates: 0, replayedLocalRenameCandidates: 1,
+				nonBindingLocalRenameCandidates: 1, releasableLocalRenameCandidates: 1,
+			}));
+			await orchestrator.close();
+		});
+
 		it("defers a mutation-backed folder rename until provider confirmation", async () => {
 			const localFs = createMockLocalFs();
 			const remoteFs = createMockRemoteFs();
