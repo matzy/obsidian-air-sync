@@ -1,7 +1,7 @@
-import type { IFileSystem } from "../interface";
-import { DropboxFs } from "../dropbox";
-import { GoogleDriveFs } from "../googledrive";
-import { OneDriveFs } from "../onedrive";
+import type { IFileSystem } from "../../../src/fs/interface";
+import { DropboxFs } from "../../../src/fs/dropbox";
+import { GoogleDriveFs } from "../../../src/fs/googledrive";
+import { OneDriveFs } from "../../../src/fs/onedrive";
 
 /**
  * Test-only catalog joining production filesystem implementations to the remote

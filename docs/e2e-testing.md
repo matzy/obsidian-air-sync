@@ -6,10 +6,13 @@ OneDrive clients (see
 [ADR 0002](adr/0002-backends-verified-by-shared-behaviour-contracts.md)). That is fast and
 runs in CI, but a fake can drift from the real API and every test stays green.
 
-The **opt-in e2e** runs the shared `IFileSystem` contract against the **live** APIs and adds
+The **opt-in e2e** imports the shared contract from `tests/fs/contracts/`, runs it against
+the **live** APIs, and adds
 E2E-owned Priority fidelity scenarios to catch such drift
 ([ADR 0003](adr/0003-opt-in-e2e-validates-fakes-against-real-backends.md)). It is
-**local/manual only** — never part of `npm test`, the lint gate, or CI.
+**local/manual only** — never part of `npm test`, the lint gate, or CI. Every E2E script first
+runs the credential-free `npm run typecheck:e2e` entrypoint/helper graph check; live API execution
+remains credentials-gated.
 
 Every backend suite also runs the Issue #45 composed rename-safety scenario: establish a
 persisted metadata checkpoint, perform a local-origin case-only rename, perform a
@@ -35,7 +38,7 @@ cp .env.e2e.example .env.e2e          # gitignored; fill the Google + OneDrive c
 npm run e2e:bootstrap -- google       # authorize in the browser → token auto-written to .env.e2e
 npm run e2e:bootstrap -- dropbox      # authorize in the browser → token auto-written to .env.e2e
 npm run e2e:bootstrap -- onedrive     # authorize in the browser → token auto-written to .env.e2e
-npm run test:e2e                      # runs the contract against the live APIs
+npm run test:e2e                      # type-checks E2E wiring, then runs the live contracts
 ```
 
 With **no** credentials, `npm run test:e2e` warns and skips every backend and exits 0 — so

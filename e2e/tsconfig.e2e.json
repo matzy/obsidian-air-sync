@@ -1,0 +1,20 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"skipLibCheck": true,
+		"target": "ES2022",
+		"types": ["node"]
+	},
+	"include": [
+		"./googledrive.e2e.ts",
+		"./dropbox.e2e.ts",
+		"./onedrive.e2e.ts",
+		"./bootstrap.ts",
+		"./vitest.e2e.config.ts",
+		"./obsidian.shim.ts",
+		"./request-url.ts",
+		"./electron-net-setup.ts",
+		"./helpers/**/*.ts"
+	]
+}

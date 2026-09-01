@@ -1,10 +1,10 @@
 import "fake-indexeddb/auto";
 import { vi } from "vitest";
-import type { DropboxClient } from "./client";
-import type { DropboxEntry, DropboxListFolderResponse } from "./types";
-import { MetadataStore } from "../../store/metadata-store";
-import { DropboxFs } from "./index";
-import { dbxFile, dbxFolder, dbxDeleted } from "./test-helpers";
+import type { DropboxClient } from "../../../src/fs/dropbox/client";
+import type { DropboxEntry, DropboxListFolderResponse } from "../../../src/fs/dropbox/types";
+import { MetadataStore } from "../../../src/store/metadata-store";
+import { DropboxFs } from "../../../src/fs/dropbox";
+import { dbxFile, dbxFolder, dbxDeleted } from "../../../src/fs/dropbox/test-helpers";
 import { runCachingRemoteFsContract } from "../contracts/caching-remote-fs.contract";
 import type { CachingRemoteFsHarness } from "../contracts/caching-remote-fs.contract";
 

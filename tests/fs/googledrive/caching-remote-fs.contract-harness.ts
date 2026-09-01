@@ -1,10 +1,10 @@
 import "fake-indexeddb/auto";
 import { vi } from "vitest";
-import type { GoogleDriveClient } from "./client";
-import type { GoogleDriveFile, GoogleDriveChange } from "./types";
-import { FOLDER_MIME } from "./types";
-import { MetadataStore } from "../../store/metadata-store";
-import { GoogleDriveFs } from "./index";
+import type { GoogleDriveClient } from "../../../src/fs/googledrive/client";
+import type { GoogleDriveFile, GoogleDriveChange } from "../../../src/fs/googledrive/types";
+import { FOLDER_MIME } from "../../../src/fs/googledrive/types";
+import { MetadataStore } from "../../../src/store/metadata-store";
+import { GoogleDriveFs } from "../../../src/fs/googledrive";
 import { runCachingRemoteFsContract } from "../contracts/caching-remote-fs.contract";
 import type { CachingRemoteFsHarness } from "../contracts/caching-remote-fs.contract";
 

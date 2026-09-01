@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OneDriveClient } from "./client";
-import type { OneDriveItem, OneDriveDeltaResponse } from "./types";
-import { OneDriveFs } from "./index";
-import { quickXorHashBase64 } from "../../utils/quickxor";
+import type { OneDriveClient } from "../../../src/fs/onedrive/client";
+import type { OneDriveItem, OneDriveDeltaResponse } from "../../../src/fs/onedrive/types";
+import { OneDriveFs } from "../../../src/fs/onedrive";
+import { quickXorHashBase64 } from "../../../src/utils/quickxor";
 import { runIFileSystemContract } from "../contracts/ifilesystem.contract";
 
 vi.mock("obsidian");

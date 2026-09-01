@@ -1,10 +1,10 @@
 import "fake-indexeddb/auto";
 import { vi } from "vitest";
-import type { OneDriveClient } from "./client";
-import type { OneDriveItem, OneDriveDeltaResponse } from "./types";
-import { MetadataStore } from "../../store/metadata-store";
-import { OneDriveFs } from "./index";
-import { odFile, odFolder, odDeleted } from "./test-helpers";
+import type { OneDriveClient } from "../../../src/fs/onedrive/client";
+import type { OneDriveItem, OneDriveDeltaResponse } from "../../../src/fs/onedrive/types";
+import { MetadataStore } from "../../../src/store/metadata-store";
+import { OneDriveFs } from "../../../src/fs/onedrive";
+import { odFile, odFolder, odDeleted } from "../../../src/fs/onedrive/test-helpers";
 import { runCachingRemoteFsContract } from "../contracts/caching-remote-fs.contract";
 import type { CachingRemoteFsHarness } from "../contracts/caching-remote-fs.contract";
 

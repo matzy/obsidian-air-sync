@@ -28,10 +28,11 @@ is **opt-in**.
    each remote FS built over its *real* typed client (authenticated
    from a stored refresh token) is driven through the exact same contract the fakes run. No
    parallel e2e assertions — drift surfaces as the shared contract going red against the live
-   API. The harness lives in a top-level `e2e/` dir; the contract and FS/clients/auth come
-   from `src/` unchanged.
+   API. The harness lives in a top-level `e2e/` dir; the contract comes from `tests/fs/`,
+   while FS/clients/auth come from `src/` unchanged.
 
-2. **Opt-in, local/manual only — never CI.** A separate vitest config
+2. **Opt-in, local/manual only — never CI.** A separate TypeScript project verifies the
+   full E2E entrypoint/helper import graph without credentials before a separate vitest config
    (`e2e/vitest.e2e.config.ts`) and script (`npm run test:e2e`), never the default `npm test`
    nor the lint workflow. e2e files are named `*.e2e.ts` (outside both the default
    `src/**/*.test.ts` include and lint's scope).

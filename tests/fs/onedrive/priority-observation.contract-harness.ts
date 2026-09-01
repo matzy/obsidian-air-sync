@@ -4,9 +4,9 @@ import {
 	type PriorityObservationContractHarness,
 	type PriorityObservationScenario,
 } from "../contracts/priority-observation.contract";
-import { OneDriveFs } from "./index";
-import type { OneDriveClient } from "./client";
-import { GraphApiError, type OneDriveItem } from "./types";
+import { OneDriveFs } from "../../../src/fs/onedrive";
+import type { OneDriveClient } from "../../../src/fs/onedrive/client";
+import { GraphApiError, type OneDriveItem } from "../../../src/fs/onedrive/types";
 
 const CONTENT = new Uint8Array([1, 2, 3]).buffer;
 

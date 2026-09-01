@@ -3,7 +3,7 @@ import { DropboxAuth } from "../src/fs/dropbox/auth";
 import { DROPBOX_AUTH } from "../src/fs/auth-config";
 import { DropboxFs } from "../src/fs/dropbox/index";
 import type { DropboxEntry } from "../src/fs/dropbox/types";
-import { runIFileSystemContract, bytes } from "../src/fs/contracts/ifilesystem.contract";
+import { runIFileSystemContract, bytes } from "../tests/fs/contracts/ifilesystem.contract";
 import { MetadataStore } from "../src/store/metadata-store";
 import { RetryingDropboxClient } from "./helpers/dropbox-retry-client";
 import { readCreds } from "./helpers/env";

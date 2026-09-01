@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
 		exclude: [
 			"src/fs/googledrive/test-helpers.test.ts",
 		],
@@ -18,15 +18,13 @@ export default defineConfig({
 				functions: 70,
 				branches: 65,
 			},
-			// Production code only: exclude tests, test doubles, shared test
-			// contracts, pure-type modules, and build/config files.
+			// Production code only: test contracts live outside src, so this
+			// denominator excludes only colocated tests/doubles and pure types.
 			include: ["src/**/*.ts"],
 			exclude: [
 				"src/**/*.test.ts",
 				"src/**/*.d.ts",
 				"src/__mocks__/**",
-				"src/fs/contracts/**",
-				"src/**/*contract-harness.ts",
 				"src/**/test-helpers.ts",
 				"src/**/types.ts",
 				"src/main.ts",

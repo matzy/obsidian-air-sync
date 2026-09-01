@@ -4,7 +4,7 @@ import { OneDriveAuth } from "../src/fs/onedrive/auth";
 import { OneDriveClient } from "../src/fs/onedrive/client";
 import { OneDriveFs } from "../src/fs/onedrive/index";
 import type { OneDriveItem } from "../src/fs/onedrive/types";
-import { runIFileSystemContract } from "../src/fs/contracts/ifilesystem.contract";
+import { runIFileSystemContract } from "../tests/fs/contracts/ifilesystem.contract";
 import { MetadataStore } from "../src/store/metadata-store";
 import { readCreds } from "./helpers/env";
 import {

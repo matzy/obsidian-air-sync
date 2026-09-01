@@ -35,8 +35,8 @@ npm run test:e2e:onedrive # …only OneDrive
 
 Always pass `npm run lint && npm run lint:bot-repro && npm run build && npm run test:coverage` after
 making changes. `npm run lint` includes `eslint-plugin-obsidianmd`; `lint:bot-repro`
-also verifies production source when external dependency declarations are unavailable,
-matching the community Dashboard failure mode. Both must be green before pushing. The
+also verifies production source when runtime or Vitest dependency declarations are
+independently unavailable, matching the community Dashboard failure mode. Both must be green before pushing. The
 full set of enforced rules, the test-pinned principles, and how to declare an exception live in
 [docs/code-enforcement.md](docs/code-enforcement.md). **Fix the code rather than
 disabling a rule.**
@@ -46,8 +46,8 @@ implementation-family catalog, all four shared `*.contract-harness.ts` registrat
 the central required-contract matrix, and that backend's opt-in live E2E; then verify
 that the generic registry guard passes. Extend a registry fixture only when the backend
 needs backend-specific construction data. Contract definitions and harnesses are test
-infrastructure; remote backend harnesses are registered only by the central
-`remote-backend-contracts.test.ts` unit composition root.
+infrastructure under `tests/fs/`; remote backend harnesses are registered only by the
+central `tests/fs/remote-backend-contracts.test.ts` unit composition root.
 
 ## Coding conventions
 

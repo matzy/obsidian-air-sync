@@ -1,9 +1,9 @@
 import { vi } from "vitest";
-import type { GoogleDriveClient } from "./client";
-import type { GoogleDriveFile } from "./types";
-import { FOLDER_MIME } from "./types";
-import { GoogleDriveFs } from "./index";
-import { sha256 } from "../../utils/hash";
+import type { GoogleDriveClient } from "../../../src/fs/googledrive/client";
+import type { GoogleDriveFile } from "../../../src/fs/googledrive/types";
+import { FOLDER_MIME } from "../../../src/fs/googledrive/types";
+import { GoogleDriveFs } from "../../../src/fs/googledrive";
+import { sha256 } from "../../../src/utils/hash";
 import { runIFileSystemContract } from "../contracts/ifilesystem.contract";
 
 vi.mock("obsidian");

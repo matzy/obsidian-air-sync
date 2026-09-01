@@ -1,9 +1,9 @@
 import { vi } from "vitest";
-import type { DropboxClient } from "./client";
-import type { DropboxEntry, DropboxListFolderResponse } from "./types";
-import { DropboxFs } from "./index";
-import { untagged } from "./test-helpers";
-import { sha256 } from "../../utils/hash";
+import type { DropboxClient } from "../../../src/fs/dropbox/client";
+import type { DropboxEntry, DropboxListFolderResponse } from "../../../src/fs/dropbox/types";
+import { DropboxFs } from "../../../src/fs/dropbox";
+import { untagged } from "../../../src/fs/dropbox/test-helpers";
+import { sha256 } from "../../../src/utils/hash";
 import { runIFileSystemContract } from "../contracts/ifilesystem.contract";
 
 vi.mock("obsidian");

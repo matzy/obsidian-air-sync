@@ -1,7 +1,7 @@
 import { vi, afterEach } from "vitest";
-import { spyRequestUrl, mockRes, dbxFile } from "./test-helpers";
-import type { DropboxFsInternal } from "./test-helpers";
-import type { DropboxEntry } from "./types";
+import { spyRequestUrl, mockRes, dbxFile } from "../../../src/fs/dropbox/test-helpers";
+import type { DropboxFsInternal } from "../../../src/fs/dropbox/test-helpers";
+import type { DropboxEntry } from "../../../src/fs/dropbox/types";
 import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../contracts/remote-change-detection.contract";
 
 vi.mock("obsidian");
@@ -27,8 +27,8 @@ export function registerDropboxChangeDetectionContract(): void {
 			return Promise.resolve(mockRes({ entries: [], cursor: "C", has_more: false }));
 		});
 
-		const { DropboxFs } = await import("./index");
-		const { DropboxClient } = await import("./client");
+		const { DropboxFs } = await import("../../../src/fs/dropbox");
+		const { DropboxClient } = await import("../../../src/fs/dropbox/client");
 		const fs = new DropboxFs(new DropboxClient(() => Promise.resolve("AT")), "id:root");
 		(fs as unknown as DropboxFsInternal).initialized = true;
 

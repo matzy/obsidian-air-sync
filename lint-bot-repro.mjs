@@ -28,6 +28,8 @@ export const REPRO_TARGETS = [
 export const REPRO_ESLINT_ARGS = ["--format", "json", "--ignore-pattern", "**/*.test.ts", ...REPRO_TARGETS];
 
 const DIRECT_RUNTIME_PACKAGES = ["obsidian", "fflate", "ignore", "js-md5", "node-diff3"];
+const TEST_RUNNER_PACKAGES = ["vitest"];
+const ALL_RESOLUTION_PACKAGES = [...DIRECT_RUNTIME_PACKAGES, ...TEST_RUNNER_PACKAGES];
 const COMMON_PROJECT_FILES = [
 	"package.json",
 	"eslint.config.mts",
@@ -36,6 +38,7 @@ const COMMON_PROJECT_FILES = [
 ];
 const EFFECTIVE_CONFIG_SENTINEL = "src/fs/dropbox/auth.ts";
 const UNTYPED_FIXTURE = "test-fixtures/lint-bot-repro/untyped-dependencies.d.ts";
+const UNTYPED_VITEST_FIXTURE = "test-fixtures/lint-bot-repro/untyped-vitest.d.ts";
 
 function hashFile(filePath) {
 	return createHash("sha256").update(readFileSync(filePath)).digest("hex");
@@ -74,17 +77,17 @@ function copyCommonProject(projectRoot, workspace) {
 	symlinkSync(join(projectRoot, "node_modules"), join(workspace, "node_modules"), "dir");
 }
 
-function injectUntypedBoundary(projectRoot, workspace) {
-	const fixtureDestination = join(workspace, UNTYPED_FIXTURE);
+function injectUntypedBoundary(projectRoot, workspace, packageNames, fixture) {
+	const fixtureDestination = join(workspace, fixture);
 	mkdirSync(dirname(fixtureDestination), { recursive: true });
-	cpSync(join(projectRoot, UNTYPED_FIXTURE), fixtureDestination);
+	cpSync(join(projectRoot, fixture), fixtureDestination);
 
 	const tsconfigPath = join(workspace, "tsconfig.json");
 	const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
 	tsconfig.compilerOptions.paths = {};
-	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
+	for (const packageName of packageNames) {
 		tsconfig.compilerOptions.paths[packageName] = [
-			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
+			`./${fixture}`,
 		];
 	}
 	writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, "\t")}\n`);
@@ -101,32 +104,37 @@ function workspaceDescriptor(workspace) {
 	};
 }
 
-function assertWorkspaceContract(normalWorkspace, injectedWorkspace) {
+function expectedInjectedTsconfig(normal, packageNames, fixture) {
+	const expected = structuredClone(normal);
+	expected.compilerOptions.paths = {};
+	for (const packageName of packageNames) expected.compilerOptions.paths[packageName] = [`./${fixture}`];
+	return expected;
+}
+
+function assertWorkspaceContract(normalWorkspace, runtimeWorkspace, vitestWorkspace) {
 	const normal = workspaceDescriptor(normalWorkspace);
-	const injected = workspaceDescriptor(injectedWorkspace);
+	const runtime = workspaceDescriptor(runtimeWorkspace);
+	const vitest = workspaceDescriptor(vitestWorkspace);
 	for (const key of ["sourceHash", "configHash", "manifestHash", "packageHash"]) {
-		if (normal[key] !== injected[key]) {
-			throw new Error(`normal/injected workspace mismatch outside type boundary: ${key}`);
+		if (normal[key] !== runtime[key] || normal[key] !== vitest[key]) {
+			throw new Error(`workspace mismatch outside type boundary: ${key}`);
 		}
 	}
-	if (JSON.stringify(normal.targets) !== JSON.stringify(injected.targets)) {
-		throw new Error("normal/injected workspace target lists differ");
+	if (JSON.stringify(normal.targets) !== JSON.stringify(runtime.targets) || JSON.stringify(normal.targets) !== JSON.stringify(vitest.targets)) {
+		throw new Error("workspace target lists differ");
 	}
 
-	const expectedInjectedTsconfig = structuredClone(normal.tsconfig);
-	expectedInjectedTsconfig.compilerOptions.paths = {};
-	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
-		expectedInjectedTsconfig.compilerOptions.paths[packageName] = [
-			"./test-fixtures/lint-bot-repro/untyped-dependencies.d.ts",
-		];
+	if (JSON.stringify(runtime.tsconfig) !== JSON.stringify(expectedInjectedTsconfig(normal.tsconfig, DIRECT_RUNTIME_PACKAGES, UNTYPED_FIXTURE))) {
+		throw new Error("runtime-untyped workspace may differ only by the five runtime dependency paths");
 	}
-	if (JSON.stringify(injected.tsconfig) !== JSON.stringify(expectedInjectedTsconfig)) {
-		throw new Error(
-			"injected workspace may differ only by the five untyped dependency paths",
-		);
+	if (JSON.stringify(vitest.tsconfig) !== JSON.stringify(expectedInjectedTsconfig(normal.tsconfig, TEST_RUNNER_PACKAGES, UNTYPED_VITEST_FIXTURE))) {
+		throw new Error("Vitest-untyped workspace may differ only by the Vitest dependency path");
 	}
-	if (!existsSync(join(injectedWorkspace, UNTYPED_FIXTURE))) {
-		throw new Error(`injected workspace is missing ${UNTYPED_FIXTURE}`);
+	if (!existsSync(join(runtimeWorkspace, UNTYPED_FIXTURE))) {
+		throw new Error(`runtime-untyped workspace is missing ${UNTYPED_FIXTURE}`);
+	}
+	if (!existsSync(join(vitestWorkspace, UNTYPED_VITEST_FIXTURE))) {
+		throw new Error(`Vitest-untyped workspace is missing ${UNTYPED_VITEST_FIXTURE}`);
 	}
 
 	return {
@@ -181,7 +189,7 @@ function loadProjectPackage(projectRoot, packageName) {
 	}
 }
 
-function assertTypeResolution(projectRoot, workspace, injected) {
+function assertTypeResolution(projectRoot, workspace, injectedPackages = [], fixture = null) {
 	const ts = loadProjectPackage(projectRoot, "typescript");
 	const configPath = join(workspace, "tsconfig.json");
 	const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
@@ -193,7 +201,7 @@ function assertTypeResolution(projectRoot, workspace, injected) {
 		throw new Error(`TypeScript could not parse ${configPath}`);
 	}
 	const resolutions = {};
-	for (const packageName of DIRECT_RUNTIME_PACKAGES) {
+	for (const packageName of ALL_RESOLUTION_PACKAGES) {
 		const resolvedModule = ts.resolveModuleName(
 			packageName,
 			join(workspace, "src", "main.ts"),
@@ -204,8 +212,8 @@ function assertTypeResolution(projectRoot, workspace, injected) {
 			throw new Error(`TypeScript did not resolve ${packageName} in the repro workspace`);
 		}
 		const actualPath = resolve(resolvedModule.resolvedFileName);
-		if (injected) {
-			const expectedPath = resolve(join(workspace, UNTYPED_FIXTURE));
+		if (injectedPackages.includes(packageName)) {
+			const expectedPath = resolve(join(workspace, fixture));
 			if (actualPath !== expectedPath) {
 				throw new Error(
 					`TypeScript resolved ${packageName} to ${actualPath}; expected pre-fix fixture ${expectedPath}`,
@@ -252,10 +260,10 @@ async function assertRuntimeBundleResolution(projectRoot) {
 	return inputs.filter((input) => input.includes("node_modules/"));
 }
 
-async function assertEffectiveConfig(projectRoot, normalWorkspace, injectedWorkspace) {
+async function assertEffectiveConfig(projectRoot, ...workspaces) {
 	const ESLint = loadLocalEslintApi(projectRoot);
 	const configurations = [];
-	for (const workspace of [normalWorkspace, injectedWorkspace]) {
+	for (const workspace of workspaces) {
 		const eslint = new ESLint({
 			cwd: workspace,
 			overrideConfigFile: join(workspace, "eslint.config.mts"),
@@ -276,8 +284,8 @@ async function assertEffectiveConfig(projectRoot, normalWorkspace, injectedWorks
 		}
 		configurations.push(ruleSettings);
 	}
-	if (JSON.stringify(configurations[0]) !== JSON.stringify(configurations[1])) {
-		throw new Error("normal/injected effective configs differ for the five unsafe rules");
+	if (configurations.slice(1).some((configuration) => JSON.stringify(configuration) !== JSON.stringify(configurations[0]))) {
+		throw new Error("workspace effective configs differ for the five unsafe rules");
 	}
 }
 
@@ -316,21 +324,27 @@ export async function runLintBotReproduction({
 		const binaryPath = resolveLocalEslintBinary(projectRoot);
 		const runtimeBundleInputs = await verifyRuntimeBundle(projectRoot);
 		const normalWorkspace = join(tempRoot, "normal");
-		const injectedWorkspace = join(tempRoot, "injected");
+		const runtimeWorkspace = join(tempRoot, "runtime-untyped");
+		const vitestWorkspace = join(tempRoot, "vitest-untyped");
 		mkdirSync(normalWorkspace);
-		mkdirSync(injectedWorkspace);
+		mkdirSync(runtimeWorkspace);
+		mkdirSync(vitestWorkspace);
 		copyCommonProject(projectRoot, normalWorkspace);
-		copyCommonProject(projectRoot, injectedWorkspace);
-		injectUntypedBoundary(projectRoot, injectedWorkspace);
-		const descriptor = assertWorkspaceContract(normalWorkspace, injectedWorkspace);
-		const normalResolutions = verifyResolution(projectRoot, normalWorkspace, false);
-		const injectedResolutions = verifyResolution(projectRoot, injectedWorkspace, true);
-		await verifyEffectiveConfig(projectRoot, normalWorkspace, injectedWorkspace);
+		copyCommonProject(projectRoot, runtimeWorkspace);
+		copyCommonProject(projectRoot, vitestWorkspace);
+		injectUntypedBoundary(projectRoot, runtimeWorkspace, DIRECT_RUNTIME_PACKAGES, UNTYPED_FIXTURE);
+		injectUntypedBoundary(projectRoot, vitestWorkspace, TEST_RUNNER_PACKAGES, UNTYPED_VITEST_FIXTURE);
+		const descriptor = assertWorkspaceContract(normalWorkspace, runtimeWorkspace, vitestWorkspace);
+		const normalResolutions = verifyResolution(projectRoot, normalWorkspace);
+		const runtimeResolutions = verifyResolution(projectRoot, runtimeWorkspace, DIRECT_RUNTIME_PACKAGES, UNTYPED_FIXTURE);
+		const vitestResolutions = verifyResolution(projectRoot, vitestWorkspace, TEST_RUNNER_PACKAGES, UNTYPED_VITEST_FIXTURE);
+		await verifyEffectiveConfig(projectRoot, normalWorkspace, runtimeWorkspace, vitestWorkspace);
 
 		const normal = runEslint(binaryPath, normalWorkspace, spawn);
-		const injected = runEslint(binaryPath, injectedWorkspace, spawn);
-		onLintResults({ normal, injected });
-		const classification = classifyLintBotContrast({ normal, injected });
+		const runtimeUntyped = runEslint(binaryPath, runtimeWorkspace, spawn);
+		const vitestUntyped = runEslint(binaryPath, vitestWorkspace, spawn);
+		onLintResults({ normal, runtimeUntyped, vitestUntyped });
+		const classification = classifyLintBotContrast({ normal, runtimeUntyped, vitestUntyped });
 		if (!classification.ok) {
 			throw new Error(`${classification.code}: ${classification.message}`);
 		}
@@ -338,7 +352,8 @@ export async function runLintBotReproduction({
 			classification,
 			descriptor,
 			normalResolutions,
-			injectedResolutions,
+			runtimeResolutions,
+			vitestResolutions,
 			runtimeBundleInputs,
 		};
 	} finally {
@@ -351,7 +366,7 @@ if (isMain) {
 	try {
 		const result = await runLintBotReproduction();
 		process.stdout.write(
-			`${result.classification.message}; injected TypeScript resolved 5/5 dependencies to the untyped fixture; esbuild bundled 4/4 runtime implementations; source/config hashes matched\n`,
+			`${result.classification.message}; TypeScript resolved 5/5 runtime and 1/1 Vitest injections to isolated fixtures; esbuild bundled 4/4 runtime implementations; source/config hashes matched\n`,
 		);
 	} catch (error) {
 		process.stderr.write(`lint-bot repro failed: ${error.message}\n`);

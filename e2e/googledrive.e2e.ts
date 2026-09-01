@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe } from "vitest";
 import { GoogleDriveClient } from "../src/fs/googledrive/client";
 import { GoogleDriveFs } from "../src/fs/googledrive/index";
 import type { GoogleDriveFile } from "../src/fs/googledrive/types";
-import { runIFileSystemContract } from "../src/fs/contracts/ifilesystem.contract";
+import { runIFileSystemContract } from "../tests/fs/contracts/ifilesystem.contract";
 import { MetadataStore } from "../src/store/metadata-store";
 import {
 	createGoogleE2EAuth,

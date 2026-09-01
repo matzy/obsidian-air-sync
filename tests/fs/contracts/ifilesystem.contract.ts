@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { IFileSystem } from "../interface";
+import type { IFileSystem } from "../../../src/fs/interface";
 import { registerWriteContract } from "./ifilesystem-writes.contract";
 
 /**

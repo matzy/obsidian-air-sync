@@ -54,28 +54,28 @@ chore bolted on afterward.
 
 1. **Every remote filesystem implementation the engine drives is verified by SHARED,
    parameterized behaviour contracts** — not an ad-hoc per-backend subset. Contract
-   assertions live under `fs/contracts/`; backend-specific faithful fakes and
-   `ifilesystem.contract-harness.ts` adapters live beside their production adapters. Four
+   assertions, backend-specific faithful fakes, and `*.contract-harness.ts` adapters live
+   under the test-owned `tests/fs/` tree, outside the production `src/` scan. Four
    contract families are split by concern:
-   - **`runIFileSystemContract`** (`fs/contracts/ifilesystem.contract.ts` +
+   - **`runIFileSystemContract`** (`tests/fs/contracts/ifilesystem.contract.ts` +
      `ifilesystem-writes.contract.ts`) — the
      synchronous CRUD/rename/stat/read/list/listDir surface, path normalization, and
      snapshot isolation (buffers are copied in and out, never aliased).
-   - **`runCachingRemoteFsContract`** (`fs/contracts/caching-remote-fs.contract.ts`) — the ADR 0001
+   - **`runCachingRemoteFsContract`** (`tests/fs/contracts/caching-remote-fs.contract.ts`) — the ADR 0001
      crash-safety / **path-1** convergence guarantees of the `CachingRemoteFs` base:
      cursor co-located with the cache, re-report an un-pulled remote deletion after a
      crash, the "does NOT self-heal in-session" boundary, `resetCheckpoint`.
-   - **`runRemoteChangeDetectionContract`** (`fs/contracts/remote-change-detection.contract.ts`) —
+   - **`runRemoteChangeDetectionContract`** (`tests/fs/contracts/remote-change-detection.contract.ts`) —
      temporal change detection through `mtime`/`size`/`remoteChecksum` (the `checksumBased`
      opt makes the checksum load-bearing via a metadata-only touch).
-   - **`runPriorityObservationContract`** (`fs/contracts/priority-observation.contract.ts`) —
+   - **`runPriorityObservationContract`** (`tests/fs/contracts/priority-observation.contract.ts`) —
      the public identity-addressed outcomes and version-bound read. Checkpoint non-interference
      belongs to the generic `CachingRemoteFs` integration contract; provider API-route
      assertions remain in each backend harness.
 
-   `fs/remote-backend-contracts.test.ts` is the sole remote unit composition root. Its typed
+   `tests/fs/remote-backend-contracts.test.ts` is the sole remote unit composition root. Its typed
    backend-family × contract matrix registers all cells through `Object.values`; deleting a
-   cell is a type error. `fs/contracts/remote-backend-family.ts` maps production FS classes to
+   cell is a type error. `tests/fs/contracts/remote-backend-family.ts` maps production FS classes to
    those families, and `registry.test.ts` fails when a provider creates an implementation absent
    from that catalog. Built-in and custom OAuth providers that create the same FS intentionally
    converge to one family.
@@ -166,14 +166,14 @@ parameterization is **optional belt-and-suspenders**, not a coverage gap.
   contract.
 
 **Pinned by tests** (keep green; extend, do not weaken):
-- `fs/contracts/ifilesystem.contract.ts` (+ `ifilesystem-writes.contract.ts`) → run by
+- `tests/fs/contracts/ifilesystem.contract.ts` (+ `ifilesystem-writes.contract.ts`) → run by
   `__mocks__/mock-fs.test.ts`, `fs/local/local-fs.contract.test.ts`, and the central remote
   matrix for Google Drive, Dropbox, and OneDrive. Includes *"renames a directory … stays a directory and is
   writable"* (the mutation-pinned case above).
-- `fs/contracts/caching-remote-fs.contract.ts` → run by
+- `tests/fs/contracts/caching-remote-fs.contract.ts` → run by
   `fs/caching/remote-fs.contract.test.ts` (generic `MockRemoteFs`) and the central remote matrix.
   Pins ADR 0001 and generic cache/checkpoint non-interference.
-- `fs/contracts/remote-change-detection.contract.ts` → run by
+- `tests/fs/contracts/remote-change-detection.contract.ts` → run by
   `__mocks__/mock-remote-change-detection.test.ts` and the central remote matrix.
-- `fs/contracts/priority-observation.contract.ts` → run by the central remote matrix;
+- `tests/fs/contracts/priority-observation.contract.ts` → run by the central remote matrix;
   backend-specific harness tests pin the stable-identity API route separately.

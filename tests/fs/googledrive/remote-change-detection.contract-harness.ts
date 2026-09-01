@@ -1,6 +1,6 @@
 import { vi, afterEach } from "vitest";
-import { spyRequestUrl, mockRes } from "./test-helpers.test";
-import type { GoogleDriveFsInternal } from "./test-helpers.test";
+import { spyRequestUrl, mockRes } from "../../../src/fs/googledrive/test-helpers.test";
+import type { GoogleDriveFsInternal } from "../../../src/fs/googledrive/test-helpers.test";
 import {
 	bytes,
 	runRemoteChangeDetectionContract,
@@ -44,8 +44,8 @@ export function registerGoogleDriveChangeDetectionContract(): void {
 			},
 		);
 
-		const { GoogleDriveFs } = await import("./index");
-		const { GoogleDriveClient } = await import("./client");
+		const { GoogleDriveFs } = await import("../../../src/fs/googledrive");
+		const { GoogleDriveClient } = await import("../../../src/fs/googledrive/client");
 		const client = new GoogleDriveClient(() => Promise.resolve("access"));
 		const fs = new GoogleDriveFs(client, "root");
 		(fs as unknown as GoogleDriveFsInternal).initialized = true;

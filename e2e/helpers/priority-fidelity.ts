@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { IFileSystem } from "../../src/fs/interface";
 import type { PriorityObservationCapability } from "../../src/fs/priority-observation";
-import { bytes } from "../../src/fs/contracts/ifilesystem.contract";
+import { bytes } from "../../tests/fs/contracts/ifilesystem.contract";
 
 type PriorityFs = IFileSystem & { priority: PriorityObservationCapability };
 

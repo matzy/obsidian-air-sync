@@ -4,9 +4,9 @@ import {
 	type PriorityObservationContractHarness,
 	type PriorityObservationScenario,
 } from "../contracts/priority-observation.contract";
-import { DropboxFs } from "./index";
-import type { DropboxClient } from "./client";
-import { DropboxApiError, type DropboxEntry } from "./types";
+import { DropboxFs } from "../../../src/fs/dropbox";
+import type { DropboxClient } from "../../../src/fs/dropbox/client";
+import { DropboxApiError, type DropboxEntry } from "../../../src/fs/dropbox/types";
 
 const CONTENT = new Uint8Array([1, 2, 3]).buffer;
 

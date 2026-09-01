@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { IFileSystem } from "../interface";
+import type { IFileSystem } from "../../../src/fs/interface";
 import type {
 	PriorityObservationCapability,
 	PriorityObservationRequest,
-} from "../priority-observation";
+} from "../../../src/fs/priority-observation";
 
 export type PriorityObservationScenario =
 	| "current"

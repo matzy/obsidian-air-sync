@@ -97,14 +97,15 @@ and contract matrix; do not maintain parallel backend lists.
 
 | Guard | Ownership and enforcement |
 |---|---|
-| **Exact implementation-family catalog** | `fs/contracts/remote-backend-family.ts` owns the production filesystem families and maps exact constructors to family names. Adding or removing a production family changes this catalog explicitly |
-| **Required 4-contract matrix** | `fs/remote-backend-contracts.test.ts` is the sole remote unit composition root. Its `satisfies Record<RemoteBackendFamily, RequiredRemoteContractSet>` matrix requires every family to register `filesystem`, `caching`, `changeDetection`, and `priorityObservation`; `Object.values` registers every cell. A missing family or cell is a compile error |
+| **Exact implementation-family catalog** | `tests/fs/contracts/remote-backend-family.ts` owns the production filesystem families and maps exact constructors to family names. Adding or removing a production family changes this catalog explicitly |
+| **Required 4-contract matrix** | `tests/fs/remote-backend-contracts.test.ts` is the sole remote unit composition root. Its `satisfies Record<RemoteBackendFamily, RequiredRemoteContractSet>` matrix requires every family to register `filesystem`, `caching`, `changeDetection`, and `priorityObservation`; `Object.values` registers every cell. A missing family or cell is a compile error |
 | **Registry guard** | `fs/registry.test.ts` constructs every registered provider and fails if its filesystem implementation is absent from the exact family catalog. Built-in and custom providers may converge on the same implementation family |
 | **Live E2E ownership** | The credentials-gated suites documented in `docs/e2e-testing.md` own fidelity against the real Google Drive, Dropbox, and OneDrive APIs, including filesystem and priority-observation behaviour. They backstop faithful fakes but do not replace the always-on unit matrix or enter the local/CI gate |
 
-Each backend's shared-contract adapter is a `*.contract-harness.ts` beside that backend.
-Coverage excludes those harnesses and `fs/contracts/` because they are test
-infrastructure, while the central composition root remains a discovered `*.test.ts`.
+Each backend's shared-contract adapters live with the shared definitions under the
+corresponding `tests/fs/<backend>/` directory. Production coverage includes only `src/`,
+while the central `tests/fs/remote-backend-contracts.test.ts` composition root remains a
+discovered unit test.
 
 ## 5. Pipeline as data (Principle #4)
 
@@ -215,14 +216,16 @@ Every `eslint-disable` directive must carry a `-- reason` describing why.
 are unavailable. It is a deterministic CI contract, not a replacement for
 `npm run lint`.
 
-This command exists because there are two different lint environments:
+This command verifies three different lint environments:
 
 - `npm run lint` runs after `npm ci`, so TypeScript can read declarations from
   `node_modules`.
-- The Obsidian community Dashboard may scan submitted source without those
+- The Obsidian community Dashboard may scan submitted production source without runtime
   declarations. An unresolved import then becomes TypeScript's `error` type and can
   generate hundreds of secondary unsafe-call/assignment/member/argument/return
   findings in otherwise typed application code.
+- Vitest is independently made untyped to ensure no Vitest-owned contract or harness
+  has leaked into the Dashboard's `src/` scan boundary.
 
 The Dashboard result for the exact submitted commit remains authoritative. The local
 reproduction prevents the known dependency-resolution mismatch from returning; it
@@ -232,8 +235,8 @@ already passed the remote service.
 | | |
 |---|---|
 | **Prevents** | Shipping hundreds of `error`/`any` diagnostics when the community scanner does not install dependency declarations; weakening the five unsafe rules while normal lint happens to stay green |
-| **Where** | `package-lock.json`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and `test-fixtures/lint-bot-repro/untyped-dependencies.d.ts` |
-| **How** | Lints production source twice with identical source and ESLint configuration: once through clean-install declarations and once with the five direct dependency paths replaced by an untyped declaration. Both candidates must exit 0 with zero findings from all five unsafe rule families. |
+| **Where** | `package-lock.json`, `tsconfig.json`, `lint-bot-repro.mjs`, its pure classifier and `node:test` contract, and the isolated fixtures under `test-fixtures/lint-bot-repro/` |
+| **How** | Lints identical production source and ESLint configuration three times: with installed declarations, with the five direct runtime dependencies replaced by an untyped declaration, and with Vitest replaced independently. All candidates must exit 0 with zero findings from all five unsafe rule families. |
 | **Exception** | None. Do not cast, disable rules, or update the contract to hide a source or declaration failure. |
 
 Do not copy dependency declarations into the repository. The community scanner lints
@@ -242,9 +245,10 @@ resolution warnings with warnings inside third-party code. Dependency versions a
 their declaration files are owned by `package-lock.json` and restored with `npm ci`.
 
 The injected process models the community scanner's dependency-less source pass. The
-wrapper exits **0** only after its negative classifier tests pass, both candidates exit
-0 with zero unsafe findings, TypeScript proves that all five injected imports resolve
-to the untyped fixture, and the effective configs match. A lint exit of 1, a tool exit
+wrapper exits **0** only after its negative classifier tests pass, all three candidates exit
+0 with zero unsafe findings, TypeScript proves that all five runtime imports and Vitest resolve
+to their independently injected fixtures while non-injected boundaries resolve from
+`node_modules`, and the effective configs match. A lint exit of 1, a tool exit
 of 2, or no exit status is a failure.
 
 This path never runs `npm install`, `npx`, a download, or a network request. It uses
@@ -273,7 +277,7 @@ these green when touching the pipeline:
 
 | Principle | Pinned by |
 |---|---|
-| **Remote backend completeness** — every registered provider resolves to an exact catalogued filesystem family, and every family runs all four shared contracts | `fs/registry.test.ts`, `fs/remote-backend-contracts.test.ts` |
+| **Remote backend completeness** — every registered provider resolves to an exact catalogued filesystem family, and every family runs all four shared contracts | `fs/registry.test.ts`, `tests/fs/remote-backend-contracts.test.ts` |
 | **#3 delta-first** — the hot path stats only dirty paths and never calls `list()` (full scans are cold-start only) | `sync/delta-first.test.ts` |
 | **#5 crash-safe** — an interrupted action commits no baseline and re-syncs to convergence | `sync/crash-safety.test.ts`, `sync/convergence.test.ts` |
 | **Command-ID immutability** — registered command IDs are a stable, published API | `main-commands.test.ts` (snapshot — update only for a genuinely new command, never to rename a shipped ID) |

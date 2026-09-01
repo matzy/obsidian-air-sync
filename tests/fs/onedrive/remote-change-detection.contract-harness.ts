@@ -1,7 +1,7 @@
 import { vi, afterEach } from "vitest";
-import { spyRequestUrl, mockRes, odFile } from "./test-helpers";
-import type { OneDriveFsInternal } from "./test-helpers";
-import type { OneDriveItem } from "./types";
+import { spyRequestUrl, mockRes, odFile } from "../../../src/fs/onedrive/test-helpers";
+import type { OneDriveFsInternal } from "../../../src/fs/onedrive/test-helpers";
+import type { OneDriveItem } from "../../../src/fs/onedrive/types";
 import { bytes, runRemoteChangeDetectionContract, statOrThrow } from "../contracts/remote-change-detection.contract";
 
 vi.mock("obsidian");
@@ -27,8 +27,8 @@ export function registerOneDriveChangeDetectionContract(): void {
 			return Promise.resolve(mockRes({ value: [], "@odata.deltaLink": "https://g?token=C" }));
 		});
 
-		const { OneDriveFs } = await import("./index");
-		const { OneDriveClient } = await import("./client");
+		const { OneDriveFs } = await import("../../../src/fs/onedrive");
+		const { OneDriveClient } = await import("../../../src/fs/onedrive/client");
 		const fs = new OneDriveFs(new OneDriveClient(() => Promise.resolve("AT")), "root");
 		(fs as unknown as OneDriveFsInternal).initialized = true;
 

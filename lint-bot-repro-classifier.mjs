@@ -32,21 +32,25 @@ function parseResults(side, eslintJson) {
 	return { findings };
 }
 
-export function classifyLintBotContrast({ normal, injected }) {
-	for (const [side, result] of [["normal", normal], ["injected", injected]]) {
+export function classifyLintBotContrast({ normal, runtimeUntyped, vitestUntyped }) {
+	for (const [side, result] of [
+		["normal", normal],
+		["runtime-untyped", runtimeUntyped],
+		["vitest-untyped", vitestUntyped],
+	]) {
 		const parsed = parseResults(side, result.eslintJson);
 		if (parsed.failure) return parsed.failure;
-		if (result.exitStatus !== 0) {
-			return failure(`${side}-exit-status`, `${side} ESLint must exit 0, received ${String(result.exitStatus)}`);
-		}
 		const unsafe = parsed.findings.filter(({ ruleId }) => UNSAFE_RULE_IDS.includes(ruleId));
 		if (unsafe.length > 0) {
 			return failure(`${side}-unsafe-findings`, `${side} declarations produced ${unsafe.length} unsafe diagnostic(s)`);
+		}
+		if (result.exitStatus !== 0) {
+			return failure(`${side}-exit-status`, `${side} ESLint must exit 0, received ${String(result.exitStatus)}`);
 		}
 	}
 	return {
 		ok: true,
 		code: "fix-confirmed",
-		message: "fix confirmed: current candidate has 0 unsafe diagnostics with installed and unavailable dependency declarations",
+		message: "fix confirmed: current candidate has 0 unsafe diagnostics with installed, runtime-untyped, and Vitest-untyped declarations",
 	};
 }

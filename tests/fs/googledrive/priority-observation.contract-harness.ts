@@ -4,9 +4,9 @@ import {
 	type PriorityObservationContractHarness,
 	type PriorityObservationScenario,
 } from "../contracts/priority-observation.contract";
-import { GoogleDriveFs } from "./index";
-import type { GoogleDriveClient } from "./client";
-import type { GoogleDriveFile } from "./types";
+import { GoogleDriveFs } from "../../../src/fs/googledrive";
+import type { GoogleDriveClient } from "../../../src/fs/googledrive/client";
+import type { GoogleDriveFile } from "../../../src/fs/googledrive/types";
 
 const CONTENT = new Uint8Array([1, 2, 3]).buffer;
 

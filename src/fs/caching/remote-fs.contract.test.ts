@@ -6,8 +6,8 @@ import { MetadataStore } from "../../store/metadata-store";
 import { AbstractMetadataCache } from "./metadata-cache";
 import { CachingRemoteFs } from "./remote-fs";
 import type { IncrementalChangesResult } from "./remote-fs";
-import { runCachingRemoteFsContract } from "../contracts/caching-remote-fs.contract";
-import type { CachingRemoteFsHarness } from "../contracts/caching-remote-fs.contract";
+import { runCachingRemoteFsContract } from "../../../tests/fs/contracts/caching-remote-fs.contract";
+import type { CachingRemoteFsHarness } from "../../../tests/fs/contracts/caching-remote-fs.contract";
 import { resolveDetachedIdPath } from "../priority-observation";
 
 // A minimal id-addressed backend over an in-memory remote. It exists only to drive

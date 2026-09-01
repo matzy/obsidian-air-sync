@@ -3,7 +3,7 @@ import { initRegistry, getAllBackendProviders } from "./registry";
 import type { ISecretStore } from "./secret-store";
 import type { AirSyncSettings } from "../settings";
 import type { App } from "obsidian";
-import { remoteBackendFamilyOf } from "./contracts/remote-backend-family";
+import { remoteBackendFamilyOf } from "../../tests/fs/contracts/remote-backend-family";
 import { GoogleDriveFs } from "./googledrive";
 
 vi.mock("obsidian");

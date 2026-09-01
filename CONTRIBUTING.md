@@ -47,16 +47,18 @@ npm run lint && npm run lint:bot-repro && npm run build && npm run test:coverage
 
 - `npm run lint` — ESLint (`--max-warnings 0`), including the `eslint-plugin-obsidianmd`
   ruleset the community submission bot runs.
-- `npm run lint:bot-repro` — lints production source both with installed dependency
-  declarations and with the five runtime dependencies deliberately made untyped.
-  Both passes must report zero `@typescript-eslint/no-unsafe-*` findings. This models
+- `npm run lint:bot-repro` — lints production source in three isolated environments:
+  installed declarations, the five runtime dependencies deliberately made untyped,
+  and Vitest deliberately made untyped. Every pass must report zero
+  `@typescript-eslint/no-unsafe-*` findings. This models
   the community Dashboard source scan, which may analyse a submitted commit without
   resolving dependency declarations; a clean `npm run lint` alone is not sufficient.
 - `npm run build` — `tsc -noEmit` (strict) + esbuild bundle.
 - `npm run test:coverage` — Vitest with the ratchet coverage floors enforced; raise
   them as coverage improves, never lower them.
 
-There is also an **opt-in** `npm run test:e2e` that runs the same `IFileSystem` contract
+There is also an **opt-in** `npm run test:e2e` that first type-checks its complete
+entrypoint/helper import graph without credentials, then runs the same `IFileSystem` contract
 against the **real** Google Drive / Dropbox / OneDrive APIs to catch drift in the in-memory
 fakes. These suites also own live fidelity for public priority-observation operations;
 the always-on shared unit contracts own fail-closed semantics and complete backend wiring. It is
