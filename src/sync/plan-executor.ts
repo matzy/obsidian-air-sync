@@ -13,6 +13,8 @@ import { AsyncPool, AdaptivePool } from "../queue/async-queue";
 import type { AdaptivePoolOpts } from "../queue/async-queue";
 import { decideRetry, sleep } from "./error";
 import type { ExecutionResult } from "./execution-result";
+import type { NormalActionPermit } from "./priority-coordinator";
+import type { LocalMutationBarrier } from "./local-mutation-barrier";
 export type { BlockedAction, CompletedAction, ExecutionResult, FailedAction, ResolvedConflict } from "./execution-result";
 export { toConflictRecords } from "./execution-result";
 
@@ -40,6 +42,15 @@ export interface ExecutionContext {
 	sleep?: (ms: number) => Promise<void>;
 	/** この cycle で action を skip すべき場合に、その理由を返す。 */
 	isActionBlocked?: (action: SyncAction) => string | null;
+	/** Scheduler safe point acquired immediately before exact action execution. */
+	acquireActionPermit?: () => Promise<NormalActionPermit>;
+	/** Consume the active cycle's exact-object scheduler state; never chooses another action. */
+	beginAction?: (action: SyncAction) => "run" | "superseded" | "invalidated";
+	onActionBlocked?: (action: SyncAction) => void;
+	/** Publish a fatal terminal state before releasing the action permit. */
+	onActionFatal?: (action: SyncAction, error: AuthError) => void;
+	mutationBarrier?: LocalMutationBarrier;
+	onPhaseChange?: (phase: "transfer" | "conflict" | "structural") => void;
 }
 
 type Lane = "remote" | "local" | "both" | "none";
@@ -146,6 +157,7 @@ export async function executePlan(
 ): Promise<ExecutionResult> {
 	const result: ExecutionResult = {
 		succeeded: [],
+		superseded: [],
 		failed: [],
 		blocked: [],
 		conflicts: [],
@@ -172,6 +184,7 @@ export async function executePlan(
 	for (const action of plan.actions) {
 		const blockedReason = ctx.isActionBlocked?.(action);
 		if (blockedReason) {
+			ctx.onActionBlocked?.(action);
 			result.blocked.push({ action, reason: blockedReason });
 			ctx.logger?.warn("executePlan: action blocked", {
 				path: action.path,
@@ -196,6 +209,7 @@ export async function executePlan(
 	}
 
 	// ── Phase 1 — transfers (adaptive pool) + state-only (bounded pool). ──
+	ctx.onPhaseChange?.("transfer");
 	// One action per path ⇒ concurrent transfers target disjoint paths. State-only
 	// actions (match/cleanup) issue no network I/O, but their commit can read a file
 	// to store a 3-way-merge base, so they run through their own bounded pool rather
@@ -218,6 +232,7 @@ export async function executePlan(
 	]);
 
 	// ── Phase 2 — conflicts (serial, own phase). ──
+	ctx.onPhaseChange?.("conflict");
 	// Headless, but mutates a planner-invisible `.conflict` sibling — kept serial so
 	// concurrent resolutions can't collide on that sibling namespace (see ACTION_CLASS).
 	for (const action of conflicts) {
@@ -225,6 +240,7 @@ export async function executePlan(
 	}
 
 	// ── Phase 3 — structural mutations; the two lanes run concurrently. ──
+	ctx.onPhaseChange?.("structural");
 	// They touch disjoint filesystems (the local FS has no remote metadata cache), so
 	// they share no mutable state — safe to overlap. Within each lane: renames first
 	// (serial — a rename has two endpoints and folder renames rewrite subtrees), then
@@ -286,20 +302,39 @@ async function executeAction(
 	reportProgress: () => void,
 	onRateLimit?: () => void,
 ): Promise<void> {
+	const permit = await ctx.acquireActionPermit?.();
 	try {
+		const start = ctx.beginAction?.(action) ?? "run";
+		if (start === "superseded") {
+			result.superseded.push(action);
+			return;
+		}
+		if (start === "invalidated") {
+			result.blocked.push({ action, reason: "priority observation invalidated pending action" });
+			return;
+		}
 		// Retry only operations that replay safely: push/pull overwrite by path and
 		// delete is idempotent on our backends. A rename would, on replay, re-issue
 		// rename(oldPath, …) against a source the first (successful) attempt already
 		// moved → a spurious not-found failure — so renames run without the retry wrapper.
 		const io = () => runActionIO(action, ctx);
-		const { localEntity, remoteEntity } =
-			ACTION_CLASS[action.action].tier === "rename"
+		const execute = async () => {
+			const entities = ACTION_CLASS[action.action].tier === "rename"
 				? await io()
 				: await withIoRetry(io, ctx, onRateLimit);
-		await commitAction(action, localEntity, remoteEntity, ctx.committer);
+			await commitAction(action, entities.localEntity, entities.remoteEntity, ctx.committer);
+			return entities;
+		};
+		const paths = localMutationPaths(action);
+		const { localEntity, remoteEntity } = ctx.mutationBarrier && paths.length > 0
+			? await ctx.mutationBarrier.run(paths, execute)
+			: await execute();
 		result.succeeded.push({ action, localEntity, remoteEntity });
 	} catch (err) {
-		if (err instanceof AuthError) throw err;
+		if (err instanceof AuthError) {
+			ctx.onActionFatal?.(action, err);
+			throw err;
+		}
 		const error = err instanceof Error ? err : new Error(String(err));
 		ctx.logger?.error("executePlan: action failed", {
 			path: action.path,
@@ -309,7 +344,17 @@ async function executeAction(
 		result.failed.push({ action, error });
 	} finally {
 		reportProgress();
+		permit?.release();
 	}
+}
+
+function localMutationPaths(action: SyncAction): string[] {
+	if (action.action === "pull" || action.action === "delete_local" || action.action === "conflict") {
+		return [action.path];
+	}
+	if (action.action !== "rename_local") return [];
+	return [action.oldPath, action.path,
+		...(action.descendants?.flatMap(({ oldPath, newPath }) => [oldPath, newPath]) ?? [])];
 }
 
 async function runActionIO(
@@ -384,7 +429,17 @@ async function executeConflictAction(
 	result: ExecutionResult,
 	reportProgress: () => void,
 ): Promise<void> {
+	const permit = await ctx.acquireActionPermit?.();
 	try {
+		const start = ctx.beginAction?.(action) ?? "run";
+		if (start === "superseded") {
+			result.superseded.push(action);
+			return;
+		}
+		if (start === "invalidated") {
+			result.blocked.push({ action, reason: "priority observation invalidated pending action" });
+			return;
+		}
 		const conflictCtx: ConflictResolverContext = {
 			path: action.path,
 			localFs: ctx.localFs,
@@ -401,17 +456,24 @@ async function executeConflictAction(
 		// a fresh `.conflict-N` name, orphaning the first backup. A rate-limited resolve
 		// fails the action and re-resolves next cycle (it runs serially and never feeds
 		// the transfer pool's AIMD).
-		const resolution = await resolveConflict(conflictCtx, ctx.conflictStrategy);
-
-		const localEntity = await ctx.localFs.stat(action.path) ?? action.local;
-		const remoteEntity = await ctx.remoteFs.stat(action.path) ?? action.remote;
-
-		await commitAction(action, localEntity, remoteEntity, ctx.committer);
+		const execute = async () => {
+			const resolution = await resolveConflict(conflictCtx, ctx.conflictStrategy);
+			const localEntity = await ctx.localFs.stat(action.path) ?? action.local;
+			const remoteEntity = await ctx.remoteFs.stat(action.path) ?? action.remote;
+			await commitAction(action, localEntity, remoteEntity, ctx.committer);
+			return { resolution, localEntity, remoteEntity };
+		};
+		const { resolution, localEntity, remoteEntity } = ctx.mutationBarrier
+			? await ctx.mutationBarrier.run([action.path], execute)
+			: await execute();
 
 		result.conflicts.push({ action, resolution, localEntity, remoteEntity });
 		result.succeeded.push({ action, localEntity, remoteEntity });
 	} catch (err) {
-		if (err instanceof AuthError) throw err;
+		if (err instanceof AuthError) {
+			ctx.onActionFatal?.(action, err);
+			throw err;
+		}
 		const error = err instanceof Error ? err : new Error(String(err));
 		ctx.logger?.error("executePlan: conflict action failed", {
 			path: action.path,
@@ -420,5 +482,6 @@ async function executeConflictAction(
 		result.failed.push({ action, error });
 	} finally {
 		reportProgress();
+		permit?.release();
 	}
 }

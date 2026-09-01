@@ -6,7 +6,7 @@ import {
 } from "./rename-debt";
 import type { AdmissionResult } from "./plan-admission";
 import type { RenameDebt, SyncStateStore } from "./state";
-import type { IdentityEvidence } from "./types";
+import type { IdentityEvidence, SyncAction } from "./types";
 
 interface SyncCycleFinalizationInput {
 	admission: AdmissionResult;
@@ -17,6 +17,8 @@ interface SyncCycleFinalizationInput {
 	checkpoint: IFileSystem["checkpoint"];
 	scopeFingerprint: string;
 	stateStore: SyncStateStore;
+	/** Detached evidence/CAS contradicted the frozen cycle even without an action member. */
+	checkpointBlocked?: boolean;
 }
 
 /**
@@ -25,21 +27,26 @@ interface SyncCycleFinalizationInput {
  */
 export async function finalizeSyncCycle(input: SyncCycleFinalizationInput): Promise<IdentityEvidence[]> {
 	const succeeded = new Set(input.result.succeeded.map(({ action }) => action));
+	const superseded = new Set(input.result.superseded);
+	const terminal = (disposition: AdmissionResult["dispositions"][number], action: SyncAction) =>
+		succeeded.has(action) || (disposition.kind === "authorized" &&
+			disposition.priorityPullAction === action && superseded.has(action));
 	const dispositionEvidence = input.admission.dispositions.flatMap((disposition) => {
 		if (disposition.kind === "deferred") return [];
 		if (disposition.kind === "authorized" &&
-			!disposition.actions.every((action) => succeeded.has(action))) return [];
+			!disposition.actions.every((action) => terminal(disposition, action))) return [];
 		return disposition.evidence;
 	});
 	const releasable = [
 		...dispositionEvidence,
 		...input.admission.localRenameLifecycle.releaseAfterSafeCheckpoint,
 	];
-	const checkpointSafe = input.result.failed.length === 0 && input.result.blocked.length === 0 &&
+	const checkpointSafe = !input.checkpointBlocked && input.result.failed.length === 0 &&
+		input.result.blocked.length === 0 &&
 		input.admission.dispositions.every((disposition) =>
 			disposition.kind !== "deferred" &&
 			(disposition.kind !== "authorized" ||
-				disposition.actions.every((action) => succeeded.has(action))));
+				disposition.actions.every((action) => terminal(disposition, action))));
 	if (!checkpointSafe) return [...input.pendingEvidence];
 
 	await input.checkpoint?.commitCheckpoint({ scopeFingerprint: input.scopeFingerprint });

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import "fake-indexeddb/auto";
 
 // DOM-event handlers captured via the registerWindowEvent / registerDocumentEvent
 // deps below (in production the plugin wires these through Component#registerDomEvent).
@@ -9,16 +10,14 @@ const documentListeners = new Map<string, EventListener>();
 vi.stubGlobal("document", { visibilityState: "visible" as string });
 
 import { SyncScheduler } from "./scheduler";
+import { SyncOrchestrator as RuntimeSyncOrchestrator } from "./orchestrator";
 import type { SyncSchedulerDeps } from "./scheduler";
 import type { TAbstractFile } from "obsidian";
 import { TFolder } from "../platform/obsidian";
 import { LocalChangeTracker } from "./local-tracker";
 import {
-	createMockLocalFs, createMockRemoteFs,
-	createMockStateStore,
+	addFile, createMockLocalFs, createMockRemoteFs, mockSettings, readText,
 } from "../__mocks__/sync-test-helpers";
-import { sha256 } from "../utils/hash";
-import type { SyncRecord } from "./types";
 
 type VaultHandler = (file: TAbstractFile) => void;
 type RenameHandler = (file: TAbstractFile, oldPath: string) => void;
@@ -72,9 +71,7 @@ function createDeps(
 				return {};
 			}),
 		} as unknown as SyncSchedulerDeps["vault"],
-		localFs: () => createMockLocalFs(),
 		remoteFs: () => createMockRemoteFs(),
-		stateStore: createMockStateStore(),
 		localTracker: new LocalChangeTracker(),
 		orchestrator: { runSync, pullSingle, isSyncing: () => false },
 		isExcluded: () => false,
@@ -336,63 +333,74 @@ describe("SyncScheduler", () => {
 	});
 
 	describe("file-open priority sync", () => {
-		it("pulls when remote changed but local unchanged", async () => {
-			// Baseline hash reflects the local content, so stat()'s SHA-256 matches it
-			// and the local side is correctly seen as unchanged (only remote differs).
-			const localContent = new ArrayBuffer(10);
-			const record: SyncRecord = {
-				path: "note.md",
-				hash: await sha256(localContent),
-				localMtime: 1000,
-				remoteMtime: 1000,
-				localSize: 10,
-				remoteSize: 10,
-				syncedAt: 900,
-			};
-			await deps.stateStore.put(record);
-
-			const localFs = createMockLocalFs();
-			const remoteFs = createMockRemoteFs();
-			localFs.files.set("note.md", {
-				content: localContent,
-				entity: {
-					path: "note.md",
-					isDirectory: false,
-					size: 10,
-					mtime: 1000,
-					hash: "",
-				},
-			});
-			remoteFs.files.set("note.md", {
-				content: new ArrayBuffer(15),
-				entity: {
-					path: "note.md",
-					isDirectory: false,
-					size: 15,
-					mtime: 2000,
-					hash: "",
-				},
-			});
-
-			scheduler.destroy();
-			deps = createDeps({
-				stateStore: deps.stateStore,
-				localFs: () => localFs,
-				remoteFs: () => remoteFs,
-			});
-			scheduler = new SyncScheduler(deps);
-			scheduler.start();
-
+		it("routes an opened file without stale cache or baseline prechecks", async () => {
 			const handler = deps.workspaceHandlers.get("file-open")!;
 			await handler({ path: "note.md" });
 
 			expect(deps.pullSingle).toHaveBeenCalledWith("note.md");
 		});
 
-		it("skips pull when no sync record", async () => {
+		it("lets the priority owner reject an untracked path", async () => {
 			const handler = deps.workspaceHandlers.get("file-open")!;
 			await handler({ path: "unknown.md" });
-			expect(deps.pullSingle).not.toHaveBeenCalled();
+			expect(deps.pullSingle).toHaveBeenCalledWith("unknown.md");
+		});
+
+		it("reaches detached observation and local write from the public file-open event", async () => {
+			vi.useRealTimers();
+			const localFs = createMockLocalFs();
+			const remoteFs = createMockRemoteFs();
+			const local = addFile(localFs, "note.md", "old", 1000);
+			const localStat = await localFs.stat("note.md");
+			if (!localStat) throw new Error("test setup failed");
+			const remote = addFile(remoteFs, "note.md", "new", 2000);
+			remote.identityKey = "remote-id";
+			const priorityRead = vi.fn().mockResolvedValue({
+				kind: "content" as const,
+				content: remoteFs.files.get("note.md")!.content.slice(0),
+			});
+			remoteFs.priority = {
+				observe: vi.fn().mockResolvedValue({
+					kind: "current", path: "note.md", identityKey: "remote-id", token: "v2",
+					entity: { ...remote },
+					occupant: {
+						kind: "current", path: "note.md", identityKey: "remote-id", token: "v2",
+						entity: { ...remote },
+					},
+				}),
+				read: priorityRead,
+			};
+			const tracker = new LocalChangeTracker();
+			const settings = mockSettings({ vaultId: `scheduler-${Math.random()}` });
+			const runtime = new RuntimeSyncOrchestrator({
+				getSettings: () => settings,
+				saveSettings: vi.fn().mockResolvedValue(undefined),
+				configDir: () => ".cfg",
+				pluginId: () => "air-sync",
+				localFs: () => localFs,
+				remoteFs: () => remoteFs,
+				backendProvider: () => null,
+				onStatusChange: vi.fn(), onProgress: vi.fn(), notify: vi.fn(),
+				isMobile: () => false, localTracker: tracker,
+			});
+			await runtime.state.put({
+				path: "note.md", hash: localStat.hash,
+				localMtime: local.mtime, remoteMtime: 1000,
+				localSize: local.size, remoteSize: local.size,
+				remoteIdentityKey: "remote-id", syncedAt: 900,
+			});
+			scheduler.destroy();
+			deps = createDeps({
+				orchestrator: runtime, localTracker: tracker, remoteFs: () => remoteFs,
+			});
+			scheduler = new SyncScheduler(deps);
+			scheduler.start();
+
+			await deps.workspaceHandlers.get("file-open")!({ path: "note.md" });
+
+			expect(priorityRead).toHaveBeenCalledOnce();
+			expect(readText(localFs, "note.md")).toBe("new");
+			await runtime.close();
 		});
 
 		it("skips pull when file is null", async () => {

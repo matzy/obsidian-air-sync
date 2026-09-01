@@ -2,12 +2,14 @@
 
 **Status:** Accepted · 2026-06-09
 **Context area:** testing / `fs/` backends (multi-FS foundation)
-**Related:** [ADR 0001](0001-metadata-cache-is-subordinate-to-commit-last.md) (the crash-safety contract pins it), [ADR 0003](0003-opt-in-e2e-validates-fakes-against-real-backends.md) (the opt-in e2e that backstops fake fidelity against the live APIs), [ARCHITECTURE.md](../../ARCHITECTURE.md) (principle 2: a backend changes nothing outside `fs/`), [code-enforcement.md](../code-enforcement.md)
+**Related:** [ADR 0001](0001-metadata-cache-is-subordinate-to-commit-last.md) (the crash-safety contract pins it), [ADR 0003](0003-opt-in-e2e-validates-fakes-against-real-backends.md) (the opt-in e2e that backstops fake fidelity against the live APIs), [ARCHITECTURE.md](../../ARCHITECTURE.md) (principle 2: a backend does not change the backend-agnostic production core), [code-enforcement.md](../code-enforcement.md)
 
 ## Context
 
 The sync pipeline is written against `IFileSystem` + `IBackendProvider` and **nothing
-else** (ARCHITECTURE principle 2). So "is the engine correct for backend X?" reduces to
+else** (ARCHITECTURE principle 2). Registry wiring, backend-specific settings UI,
+contract harness/catalog/matrix registration, and live E2E wiring are explicit backend
+extension points outside that production core. So "is the engine correct for backend X?" reduces to
 "does X honour the `IFileSystem` semantics the pipeline assumes?" — path normalization,
 a rename that does not clobber its destination, a moved folder that stays a folder, a
 `read()` that returns a detached copy, a `remoteChecksum` that actually tracks content.
@@ -16,10 +18,11 @@ A backend that diverges on any of these breaks sync in ways that are **invisible
 per-backend unit test written against a hand-rolled mock** — that test exercises the
 mock, not the contract. The failure surfaces only at runtime as data loss (a dropped
 remote deletion), an infinite re-sync (change detection always "changed"), or a hard
-error mid-cycle ("is a file" when writing into a renamed folder). We now drive **five**
-backends — the in-memory `createMockFs` double, the real `LocalFs` (over an Obsidian
-Vault), `GoogleDriveFs`, `DropboxFs`, and `PCloudFs` — and re-deriving the same ~46
-behaviours by hand for each is both wasteful and unreliable: the hand-written sets drift
+error mid-cycle ("is a file" when writing into a renamed folder). We now drive **three
+remote implementation families** — `GoogleDriveFs`, `DropboxFs`, and `OneDriveFs` — plus
+the in-memory `createMockFs` double and real `LocalFs` (over an Obsidian Vault).
+Re-deriving the same behaviours by hand for each is both wasteful and unreliable: the
+hand-written sets drift
 apart, and the subtle case is exactly the one a given backend's author forgets.
 
 Two concrete failure modes we hit **while building this harness** motivate the decision,
@@ -42,26 +45,40 @@ because they are the ways a contract can look green and still be worthless:
    a `write()` into the renamed folder, then **mutation-testing** it (drop the `.tag`
    re-stamp ⇒ the case goes red), made it actually guard the invariant.
 
-The payoff, when the harness is right: adopting `DropboxFs` and `PCloudFs` onto the
+The payoff, when the harness is right: adopting `DropboxFs` and `OneDriveFs` onto the
 shared `CachingRemoteFs` base required **zero production changes** to pass the contracts —
 running them was the *proof* the rebase had adopted the foundation correctly, not a
 chore bolted on afterward.
 
 ## Decision
 
-1. **Every backend the engine drives is verified by SHARED, parameterized behaviour
-   contracts** — not per-backend mock unit tests. The contracts live in `fs/`, and a new
-   backend runs each in **one line**. Three families, split by concern:
-   - **`runIFileSystemContract`** (`fs/ifilesystem-contract.ts` + `…-writes.ts`) — the
+1. **Every remote filesystem implementation the engine drives is verified by SHARED,
+   parameterized behaviour contracts** — not an ad-hoc per-backend subset. Contract
+   assertions live under `fs/contracts/`; backend-specific faithful fakes and
+   `ifilesystem.contract-harness.ts` adapters live beside their production adapters. Four
+   contract families are split by concern:
+   - **`runIFileSystemContract`** (`fs/contracts/ifilesystem.contract.ts` +
+     `ifilesystem-writes.contract.ts`) — the
      synchronous CRUD/rename/stat/read/list/listDir surface, path normalization, and
      snapshot isolation (buffers are copied in and out, never aliased).
-   - **`runCachingRemoteFsContract`** (`fs/caching/remote-fs-contract.ts`) — the ADR 0001
+   - **`runCachingRemoteFsContract`** (`fs/contracts/caching-remote-fs.contract.ts`) — the ADR 0001
      crash-safety / **path-1** convergence guarantees of the `CachingRemoteFs` base:
      cursor co-located with the cache, re-report an un-pulled remote deletion after a
      crash, the "does NOT self-heal in-session" boundary, `resetCheckpoint`.
-   - **`runRemoteChangeDetectionContract`** (`fs/remote-change-detection-contract.ts`) —
+   - **`runRemoteChangeDetectionContract`** (`fs/contracts/remote-change-detection.contract.ts`) —
      temporal change detection through `mtime`/`size`/`remoteChecksum` (the `checksumBased`
      opt makes the checksum load-bearing via a metadata-only touch).
+   - **`runPriorityObservationContract`** (`fs/contracts/priority-observation.contract.ts`) —
+     the public identity-addressed outcomes and version-bound read. Checkpoint non-interference
+     belongs to the generic `CachingRemoteFs` integration contract; provider API-route
+     assertions remain in each backend harness.
+
+   `fs/remote-backend-contracts.test.ts` is the sole remote unit composition root. Its typed
+   backend-family × contract matrix registers all cells through `Object.values`; deleting a
+   cell is a type error. `fs/contracts/remote-backend-family.ts` maps production FS classes to
+   those families, and `registry.test.ts` fails when a provider creates an implementation absent
+   from that catalog. Built-in and custom OAuth providers that create the same FS intentionally
+   converge to one family.
 
 2. **Assert ONLY through the public interface** (`IFileSystem` / `IBackendProvider`),
    never a backend's private store or cache (`fs.files`, the metadata cache, …). The
@@ -71,7 +88,7 @@ chore bolted on afterward.
    opt-out of a behaviour.
 
 3. **Run the contract against the REAL FS** over a fake at its **I/O boundary** — the
-   typed client (`GoogleDriveClient`/`DropboxClient`/`PCloudClient`), the mock `Vault` for
+   typed client (`GoogleDriveClient`/`DropboxClient`/`OneDriveClient`), the mock `Vault` for
    `LocalFs`, or, where the change-detection contract needs it, the raw transport
    (`requestUrl`). Never against a re-implementation of the FS itself.
 
@@ -90,8 +107,9 @@ chore bolted on afterward.
    path. An `exists()`-style check that passes for the wrong type is not an assertion of
    type.
 
-6. **A new backend ADOPTS the contracts; it does not re-implement them.** One line per
-   contract plus a faithful fake. **Zero production change to pass = proof** the backend
+6. **A new backend ADOPTS the contracts; it does not re-implement them.** It adds one
+   implementation family, a faithful harness for each required contract, and all typed matrix
+   cells. **Zero production change to pass = proof** the backend
    adopted the foundation correctly. A **failure = a real divergence to FIX in the
    backend**, never a reason to opt that backend out of the case.
 
@@ -148,14 +166,14 @@ parameterization is **optional belt-and-suspenders**, not a coverage gap.
   contract.
 
 **Pinned by tests** (keep green; extend, do not weaken):
-- `fs/ifilesystem-contract.ts` (+ `…-writes.ts`) → run by `__mocks__/mock-fs.test.ts`,
-  `fs/local/local-fs.contract.test.ts`, `fs/googledrive/ifilesystem-contract.test.ts`,
-  `fs/dropbox/ifilesystem-contract.test.ts` (and `fs/pcloud/ifilesystem-contract.test.ts`
-  on the `pcloud-fs` branch). Includes *"renames a directory … stays a directory and is
+- `fs/contracts/ifilesystem.contract.ts` (+ `ifilesystem-writes.contract.ts`) → run by
+  `__mocks__/mock-fs.test.ts`, `fs/local/local-fs.contract.test.ts`, and the central remote
+  matrix for Google Drive, Dropbox, and OneDrive. Includes *"renames a directory … stays a directory and is
   writable"* (the mutation-pinned case above).
-- `fs/caching/remote-fs-contract.ts` → run by `fs/caching/remote-fs.contract.test.ts` (a
-  generic `MockRemoteFs`), `fs/googledrive/crash-safety-contract.test.ts`,
-  `fs/dropbox/crash-safety-contract.test.ts` (and pCloud's on its branch). Pins ADR 0001.
-- `fs/remote-change-detection-contract.ts` → run by `__mocks__/mock-remote-change-detection.test.ts`,
-  `fs/googledrive/remote-change-detection.test.ts`, `fs/dropbox/remote-change-detection.test.ts`
-  (and pCloud's on its branch).
+- `fs/contracts/caching-remote-fs.contract.ts` → run by
+  `fs/caching/remote-fs.contract.test.ts` (generic `MockRemoteFs`) and the central remote matrix.
+  Pins ADR 0001 and generic cache/checkpoint non-interference.
+- `fs/contracts/remote-change-detection.contract.ts` → run by
+  `__mocks__/mock-remote-change-detection.test.ts` and the central remote matrix.
+- `fs/contracts/priority-observation.contract.ts` → run by the central remote matrix;
+  backend-specific harness tests pin the stable-identity API route separately.

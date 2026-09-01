@@ -121,6 +121,69 @@ describe("executePlan", () => {
 			expect((ctx.localFs as MockFileSystem).files.has("b.md")).toBe(true);
 			expect(stateStore.records.has("b.md")).toBe(true);
 		});
+
+		it("skips provider I/O for an exact action superseded after permit acquisition", async () => {
+			const action: SyncAction = {
+				path: "b.md", action: "pull",
+				remote: { path: "b.md", isDirectory: false, size: 1, mtime: 2, hash: "" },
+			};
+			const ctx = makeCtx({
+				acquireActionPermit: () => Promise.resolve({ release: vi.fn() }),
+				beginAction: (candidate) => candidate === action ? "superseded" : "run",
+			});
+			const read = vi.spyOn(ctx.remoteFs, "read");
+
+			const result = await executePlan(makePlan([action]), ctx);
+
+			expect(result.superseded).toEqual([action]);
+			expect(result.succeeded).toEqual([]);
+			expect(read).not.toHaveBeenCalled();
+		});
+
+		it("holds the action permit through SyncRecord commit and result publication", async () => {
+			let released = false;
+			const order: string[] = [];
+			const ctx = makeCtx({
+				acquireActionPermit: () => Promise.resolve({ release: () => {
+					released = true;
+					order.push("release");
+				} }),
+				onProgress: () => { order.push("terminal-published"); },
+			});
+			const remoteFs = ctx.remoteFs as MockFileSystem;
+			addFile(remoteFs, "permit.md", "x");
+			const stateStore = ctx.committer.stateStore as unknown as ReturnType<typeof createMockStateStore>;
+			const put = vi.spyOn(stateStore, "put").mockImplementation((record) => {
+				expect(released).toBe(false);
+				stateStore.records.set(record.path, record);
+				return Promise.resolve();
+			});
+
+			const result = await executePlan(makePlan([{
+				path: "permit.md", action: "pull",
+				remote: { path: "permit.md", isDirectory: false, size: 1, mtime: 2, hash: "" },
+			}]), ctx);
+
+			expect(put).toHaveBeenCalledOnce();
+			expect(result.succeeded).toHaveLength(1);
+			expect(released).toBe(true);
+			expect(order).toEqual(["terminal-published", "release"]);
+		});
+
+		it("publishes a fatal terminal state before releasing its permit", async () => {
+			const order: string[] = [];
+			const ctx = makeCtx({
+				acquireActionPermit: () => Promise.resolve({ release: () => { order.push("release"); } }),
+				onActionFatal: () => { order.push("fatal-published"); },
+			});
+			vi.spyOn(ctx.remoteFs, "read").mockRejectedValue(new AuthError("expired", 401));
+
+			await expect(executePlan(makePlan([{
+				path: "fatal.md", action: "pull",
+				remote: { path: "fatal.md", isDirectory: false, size: 1, mtime: 2, hash: "" },
+			}]), ctx)).rejects.toThrow("expired");
+			expect(order).toEqual(["fatal-published", "release"]);
+		});
 	});
 
 	describe("match", () => {
@@ -430,7 +493,11 @@ describe("executePlan", () => {
 		});
 
 		it("aborts the cycle on AuthError during a conflict (conflict phase)", async () => {
-			const ctx = makeCtx();
+			const order: string[] = [];
+			const ctx = makeCtx({
+				acquireActionPermit: () => Promise.resolve({ release: () => { order.push("release"); } }),
+				onActionFatal: () => { order.push("fatal-published"); },
+			});
 			const authErr = new AuthError("Unauthorized", 401);
 			const localFs = ctx.localFs as MockFileSystem;
 			const remoteFs = ctx.remoteFs as MockFileSystem;
@@ -456,6 +523,7 @@ describe("executePlan", () => {
 			]);
 
 			await expect(executePlan(plan, ctx)).rejects.toThrow(AuthError);
+			expect(order).toEqual(["fatal-published", "release"]);
 		});
 
 		it("logs error for failed individual action", async () => {
