@@ -1,21 +1,58 @@
 # Air Sync
 
-Your Obsidian notes, always up to date on every device — without ever thinking about sync. Edit on your laptop, pick up your phone, and it's caught up before you start typing.
+**Open Obsidian on any device and keep going.**
 
-Works on desktop and mobile, powered by your own cloud storage:
+Air Sync keeps your vault in step across desktop and mobile, so you don't have to think about syncing, moving files, or resolving routine conflicts.
+
+Edit a note on your laptop, open Obsidian on your phone, and continue from where you left off.
+
+Your notes stay in **your own cloud storage**:
 
 - **Google Drive**
 - **OneDrive**
 - **Dropbox**
 
+## Built for people who want sync to disappear
+
+Air Sync is for Obsidian users who use more than one device and want their vault to stay current without turning sync into something they have to manage.
+
+You shouldn't need to:
+
+- press a sync button every time you switch devices
+- decide whether to upload or download
+- clean up routine conflicted copies
+- rescan your whole vault after every change
+- run or maintain a sync server
+
+Air Sync handles that work in the background and is designed to recover safely when Obsidian closes, a phone locks, or a connection drops halfway through.
+
 ## What you get
 
-- **Syncs itself**: Your vault stays current on every device — no button to press.
-- **Survives interruptions**: Close Obsidian or lock your phone mid-sync; it picks up where it left off.
-- **Quick on big vaults**: Only what changed moves — easy on data and battery.
-- **Two-device edits, merged**: Edits from two devices come together when they can — no messy "conflicted copy" files.
-- **Set up in a minute**: Connect once; almost nothing to configure.
-- **Choose what syncs**: Skip big attachments or a private folder.
+**Pick up where you left off**  
+Switch between desktop and mobile without manually moving notes around.
+
+**Sync without thinking about sync**  
+Changes are detected and synchronized automatically.
+
+**Keep your notes in your cloud**  
+Your vault is mirrored to Google Drive, OneDrive, or Dropbox rather than stored in an Air Sync service.
+
+**Stay fast as your vault grows**  
+After the initial scan, Air Sync processes only what changed instead of repeatedly scanning and transferring the entire vault.
+
+**Keep edits when devices disagree**  
+When the same note changes on multiple devices, Air Sync attempts to merge text changes and falls back conservatively when it cannot.
+
+**Recover from interruptions**  
+Sync state is committed as work succeeds, so an interrupted sync can continue safely instead of starting from scratch.
+
+## The idea
+
+Air Sync is designed around one principle:
+
+> **Sync should be infrastructure, not a workflow.**
+
+Your local Obsidian vault remains the place you work. Your cloud folder is a managed mirror. Air Sync keeps the two in step while staying out of the way.
 
 ## Getting started
 
