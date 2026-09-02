@@ -9,6 +9,31 @@ describe("LocalFs", () => {
 		return { app, vault: app.vault, fs };
 	}
 
+	it("normalizes Unicode paths returned by list", async () => {
+		const { vault, fs } = createLocalFs();
+		const file = new TFile();
+		file.path = "notes/ガイド.md";
+		file.stat = { size: 1, mtime: 1, ctime: 1 };
+		(vault as unknown as { files: Map<string, unknown> }).files.set(file.path, file);
+
+		const entities = await fs.list();
+
+		expect(entities.map((entity) => entity.path)).toContain("notes/ガイド.md");
+	});
+
+	it("normalizes Unicode paths returned by stat", async () => {
+		const { vault, fs } = createLocalFs();
+		const file = new TFile();
+		file.path = "notes/ガイド.md";
+		file.stat = { size: 1, mtime: 1, ctime: 1 };
+		vi.spyOn(vault, "getAbstractFileByPath").mockReturnValue(file);
+		vi.spyOn(vault, "readBinary").mockResolvedValue(new ArrayBuffer(1));
+
+		const entity = await fs.stat("notes/ガイド.md");
+
+		expect(entity?.path).toBe("notes/ガイド.md");
+	});
+
 	describe("mkdirRecursive (via write)", () => {
 		it("creates parent directories when writing a nested file", async () => {
 			const { vault, fs } = createLocalFs();

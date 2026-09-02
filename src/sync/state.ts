@@ -1,6 +1,7 @@
 import type { RenamePair, ScopeDisposition, SyncRecord } from "./types";
 import { IDBHelper, sanitizeDbName } from "../store/idb-helper";
 import { encodeContent, decodeContent } from "../store/content-codec";
+import { normalizeSyncPath } from "../utils/path";
 
 const DB_NAME_PREFIX = "air-sync";
 const STORE_NAME = "sync-records";
@@ -30,6 +31,12 @@ export interface RenameDebt {
 
 interface StoredRenameDebt extends RenameDebt {
 	key: string;
+}
+
+function normalizeRecord(record: SyncRecord | undefined): SyncRecord | undefined {
+	if (!record) return record;
+	const path = normalizeSyncPath(record.path);
+	return path === record.path ? record : { ...record, path };
 }
 
 function renameDebtKey(debt: RenameDebt): string {
@@ -182,11 +189,24 @@ export class SyncStateStore {
 			const store = tx.objectStore(STORE_NAME);
 			const request = store.get(record.path);
 			let replaced = false;
-			request.onsuccess = () => {
-				const current = request.result as SyncRecord | undefined;
-				if (JSON.stringify(current) !== JSON.stringify(expected)) return;
+			const replaceIfExpected = (current: SyncRecord | undefined): void => {
+				if (JSON.stringify(normalizeRecord(current)) !== JSON.stringify(normalizeRecord(expected))) return;
+				if (current && current.path !== record.path) store.delete(current.path);
 				store.put(record);
 				replaced = true;
+			};
+			request.onsuccess = () => {
+				const current = request.result as SyncRecord | undefined;
+				if (current) {
+					replaceIfExpected(current);
+					return;
+				}
+				const fallback = store.getAll();
+				fallback.onsuccess = () => {
+					const current = (fallback.result as SyncRecord[]).find((candidate) =>
+						normalizeSyncPath(candidate.path) === record.path);
+					replaceIfExpected(current);
+				};
 			};
 			return () => replaced;
 		});

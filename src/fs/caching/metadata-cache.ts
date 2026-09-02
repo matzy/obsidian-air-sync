@@ -2,6 +2,7 @@ import type { FileEntity, PathAuthority } from "../types";
 import type { Logger } from "../../logging/logger";
 import { INTERNAL_METADATA_PATH } from "../remote-vault-contract";
 import { resolveCachedPathAuthority, resolvePathAuthority, resolveStoredPathAuthority } from "./path-authority";
+import { normalizeSyncPath } from "../../utils/path";
 
 export interface FileChangeResult {
 	oldPath: string | undefined;
@@ -148,7 +149,9 @@ export abstract class AbstractMetadataCache<TFile> {
 
 	/** Bulk-load files into the cache. Does NOT clear — callers clear() first when rebuilding. */
 	bulkLoad(items: Iterable<[string, TFile, PathAuthority?]>): void {
-		const records = [...items];
+		const records = [...items].map(([path, file, pathAuthority]) => [
+			normalizeSyncPath(path), file, pathAuthority,
+		] as [string, TFile, PathAuthority?]);
 		const seenIds = new Map<string, string>();
 		for (const [path, file] of records) {
 			if (this.isReserved(path)) continue;
@@ -277,11 +280,14 @@ export abstract class AbstractMetadataCache<TFile> {
 
 		const parentId = this.findRelevantParentId(parents, this.idToPath);
 		if (!parentId) return null;
-		if (parentId === this.rootFolderId) return this.extractName(file);
+		// NFC: backends may hand back the same name in a different Unicode form than a
+		// prior listing, which would otherwise look like a spurious rename.
+		const name = this.extractName(file).normalize("NFC");
+		if (parentId === this.rootFolderId) return name;
 
 		const parentPath = this.idToPath.get(parentId);
 		if (!parentPath) return null;
-		return `${parentPath}/${this.extractName(file)}`;
+		return `${parentPath}/${name}`;
 	}
 
 	/**
@@ -295,7 +301,8 @@ export abstract class AbstractMetadataCache<TFile> {
 		visiting: Set<string>
 	): string {
 		const id = this.extractId(file);
-		const name = this.extractName(file);
+		// NFC: see resolvePathFromCache for why the raw backend name isn't used as-is.
+		const name = this.extractName(file).normalize("NFC");
 		const cached = resolvedPaths.get(id);
 		if (cached !== undefined) return cached;
 

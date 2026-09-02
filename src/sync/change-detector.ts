@@ -24,6 +24,7 @@ import {
 	exactEntity,
 	observePath,
 } from "./path-observation";
+import { normalizeSyncPath } from "../utils/path";
 
 export interface ChangeSet {
 	entries: MixedEntity[];
@@ -206,6 +207,7 @@ async function collectHot(
 
 async function collectWarm(deps: ChangeDetectorDeps, allRecords: SyncRecord[]): Promise<ChangeSet> {
 	const { localFs, remoteFs } = deps;
+	allRecords = allRecords.map(normalizeSyncRecord);
 
 	const [localFiles, remoteChanges] = await Promise.all([
 		localFs.list(),
@@ -292,6 +294,7 @@ async function collectCold(
 	prefetchedRemoteFiles?: FileEntity[],
 ): Promise<ChangeSet> {
 	const { localFs, remoteFs } = deps;
+	allRecords = allRecords.map(normalizeSyncRecord);
 
 	const [localFiles, remoteFiles] = await Promise.all([
 		prefetchedLocalFiles ?? localFs.list(),
@@ -335,4 +338,9 @@ async function collectCold(
 		identityEvidence: remoteChanges?.renameEvidence ?? [],
 		temperature: "cold",
 	};
+}
+
+function normalizeSyncRecord(record: SyncRecord): SyncRecord {
+	const path = normalizeSyncPath(record.path);
+	return path === record.path ? record : { ...record, path };
 }

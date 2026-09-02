@@ -89,6 +89,8 @@ function applyEntry<TFile>(
 	if (!newPath) return;
 
 	acc.changedPaths.add(newPath);
+	// Relies on cached/resolved paths being NFC-normalized (AbstractMetadataCache),
+	// else two Unicode forms of the same name would look like a permanent phantom rename.
 	const moved = !!oldPath && oldPath !== newPath;
 	if (moved) {
 		acc.changedPaths.add(oldPath);

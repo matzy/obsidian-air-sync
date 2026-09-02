@@ -14,9 +14,11 @@ export function collectLocalRenameEvidence(changes: TrackerSnapshot): RenameEvid
 }
 
 export function collectRemoteRenameEvidence(pairs: readonly RenamePair[]): RenameEvidence[] {
-	return dedupeRenameEvidence(pairs.map(({ oldPath, newPath, isFolder }): RenameEvidence => ({
-		kind: "rename", side: "remote", oldPath, newPath, isFolder: isFolder === true, authority: "reported",
-	})));
+	return dedupeRenameEvidence(pairs
+		.filter(({ oldPath, newPath }) => oldPath !== newPath)
+		.map(({ oldPath, newPath, isFolder }): RenameEvidence => ({
+			kind: "rename", side: "remote", oldPath, newPath, isFolder: isFolder === true, authority: "reported",
+		})));
 }
 
 export function renameOptimizerView(evidence: readonly IdentityEvidence[]): {

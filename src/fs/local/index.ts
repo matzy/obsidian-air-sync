@@ -44,7 +44,7 @@ export class LocalFs implements IFileSystem {
 
 			if (file instanceof TFile) {
 				entities.push({
-					path: file.path,
+					path: normalizeSyncPath(file.path),
 					pathAuthority: "actual_resolved",
 					isDirectory: false,
 					size: file.stat.size,
@@ -56,7 +56,7 @@ export class LocalFs implements IFileSystem {
 				});
 			} else if (file instanceof TFolder) {
 				entities.push({
-					path: file.path,
+					path: normalizeSyncPath(file.path),
 					pathAuthority: "actual_resolved",
 					isDirectory: true,
 					size: 0,
@@ -94,7 +94,7 @@ export class LocalFs implements IFileSystem {
 			const content = await this.vault.readBinary(file);
 			const hash = await sha256(content);
 			return {
-				path: file.path,
+				path: normalizeSyncPath(file.path),
 				pathAuthority: "actual_resolved",
 				isDirectory: false,
 				size: file.stat.size,
@@ -177,7 +177,7 @@ export class LocalFs implements IFileSystem {
 		return folder.children.map((child) => {
 			if (child instanceof TFile) {
 				return {
-					path: child.path,
+					path: normalizeSyncPath(child.path),
 					pathAuthority: "actual_resolved",
 					isDirectory: false,
 					size: child.stat.size,
@@ -185,7 +185,7 @@ export class LocalFs implements IFileSystem {
 					hash: "",
 				};
 			}
-			return { path: child.path, pathAuthority: "actual_resolved", isDirectory: true, size: 0, mtime: 0, hash: "" };
+			return { path: normalizeSyncPath(child.path), pathAuthority: "actual_resolved", isDirectory: true, size: 0, mtime: 0, hash: "" };
 		});
 	}
 

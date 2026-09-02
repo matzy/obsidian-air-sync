@@ -30,6 +30,20 @@ describe("identity evidence", () => {
 		expect(view.remote).toEqual([{ oldPath: "x.md", newPath: "y.md", isFolder: undefined }]);
 	});
 
+	it("drops a no-op remote rename pair (oldPath === newPath)", () => {
+		// Guards against phantom renames from an upstream path mismatch (e.g. two
+		// Unicode normalization forms of the same name) reaching the identity graph.
+		const remote = collectRemoteRenameEvidence([
+			{ oldPath: "same.md", newPath: "same.md" },
+			{ oldPath: "x.md", newPath: "y.md" },
+		]);
+
+		expect(remote).toEqual([{
+			kind: "rename", side: "remote", oldPath: "x.md", newPath: "y.md",
+			isFolder: false, authority: "reported",
+		}]);
+	});
+
 	it("attaches native identity and relates cross-path baseline/current occurrences", () => {
 		const remote: FileEntity = {
 			path: "b.md", pathAuthority: "actual_resolved", identityKey: "id-1",

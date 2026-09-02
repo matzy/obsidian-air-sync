@@ -54,6 +54,21 @@ describe("OneDriveMetadataCache.buildFromFiles (id-chain resolution)", () => {
 		expect(cache.size).toBe(1);
 		expect(cache.getPathById("f1")).toBe("renamed.md");
 	});
+
+	// Graph may hand back a name in a different Unicode normalization form than a
+	// prior listing (e.g. legacy items imported from a tool that wrote NFD). If the
+	// cache didn't canonicalize, this would look like a permanent phantom rename.
+	it("resolves NFC and NFD forms of the same name to the same path", () => {
+		const nfd = "\u30D5\u30A9\u30EB\u30BF\u3099.md"; // フォルタ + ゛ (decomposed dakuten)
+		const nfc = "\u30D5\u30A9\u30EB\u30C0.md"; // フォルダ (precomposed)
+
+		const cache = makeCache();
+		cache.buildFromFiles([odFile("f1", nfd, ROOT)]);
+		expect(cache.getPathById("f1")).toBe(nfc);
+
+		const result = cache.applyFileChangeDetectMove(odFile("f1", nfc, ROOT));
+		expect(result).toMatchObject({ oldPath: nfc, newPath: nfc });
+	});
 });
 
 describe("OneDriveMetadataCache tree mutation", () => {

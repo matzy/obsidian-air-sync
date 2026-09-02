@@ -3,13 +3,16 @@
  * - Backslashes → forward slashes
  * - Collapse consecutive slashes
  * - Strip leading/trailing slashes
+ * - Unicode-normalize to NFC (backends and filesystems may hand back the same
+ *   name in different composed/decomposed forms; comparing/caching by identity
+ *   requires one canonical form or unrelated-looking paths spuriously "rename")
  */
 export function normalizeSyncPath(path: string): string {
 	let p = path.replace(/\\/g, "/");
 	p = p.replace(/\/+/g, "/");
 	if (p.startsWith("/")) p = p.substring(1);
 	if (p.endsWith("/")) p = p.substring(0, p.length - 1);
-	return p;
+	return p.normalize("NFC");
 }
 
 /**

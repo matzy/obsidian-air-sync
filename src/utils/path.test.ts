@@ -70,6 +70,19 @@ describe("normalizeSyncPath", () => {
 	it("handles combined issues", () => {
 		expect(normalizeSyncPath("/foo\\\\bar//baz/")).toBe("foo/bar/baz");
 	});
+
+	it("normalizes NFD (decomposed) Unicode to NFC (composed)", () => {
+		const nfd = "notes/\u304B\u3099.md"; // か + combining dakuten (゛)
+		const nfc = "notes/\u304C.md"; // が (precomposed)
+		expect(normalizeSyncPath(nfd)).toBe(nfc);
+	});
+
+	it("produces the same result for NFC and NFD forms of the same name", () => {
+		const nfd = "\u30D5\u30A9\u30EB\u30BF\u3099/\u30D5\u30A1\u30A4\u30EB.md"; // folder: フォル + タ + ゛ (decomposed)
+		const nfc = "\u30D5\u30A9\u30EB\u30C0/\u30D5\u30A1\u30A4\u30EB.md"; // folder: フォルダ (precomposed)
+		expect(normalizeSyncPath(nfd)).toBe(normalizeSyncPath(nfc));
+		expect(normalizeSyncPath(nfd)).toBe(nfc);
+	});
 });
 
 describe("getFileExtension", () => {

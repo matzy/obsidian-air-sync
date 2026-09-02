@@ -3,7 +3,11 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 import globals from "globals";
 import { defineConfig, globalIgnores } from "eslint/config";
 
-const configRoot = decodeURIComponent(new URL(".", import.meta.url).pathname);
+// `new URL(...).pathname` is POSIX-style even on Windows: strip the leading "/"
+// before a drive letter (e.g. "/C:/foo" → "C:/foo") so tsconfigRootDir is a real
+// absolute path there too.
+const rawConfigRoot = decodeURIComponent(new URL(".", import.meta.url).pathname);
+const configRoot = /^\/[a-zA-Z]:\//.test(rawConfigRoot) ? rawConfigRoot.substring(1) : rawConfigRoot;
 
 // ---------------------------------------------------------------------------
 // Design-principle guards (see ARCHITECTURE.md "Design principles").
