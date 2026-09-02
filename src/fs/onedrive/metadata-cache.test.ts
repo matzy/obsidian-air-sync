@@ -41,6 +41,19 @@ describe("OneDriveMetadataCache.buildFromFiles (id-chain resolution)", () => {
 			hash: "",
 		});
 	});
+
+	// Graph's `/delta` full enumeration may emit the same item on more than one page.
+	it("collapses an id the enumeration repeats, keeping the last state", () => {
+		const cache = makeCache();
+
+		expect(() => cache.buildFromFiles([
+			odFile("f1", "a.md", ROOT),
+			odFile("f1", "renamed.md", ROOT),
+		])).not.toThrow();
+
+		expect(cache.size).toBe(1);
+		expect(cache.getPathById("f1")).toBe("renamed.md");
+	});
 });
 
 describe("OneDriveMetadataCache tree mutation", () => {

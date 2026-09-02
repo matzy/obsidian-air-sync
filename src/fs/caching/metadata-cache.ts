@@ -236,6 +236,11 @@ export abstract class AbstractMetadataCache<TFile> {
 	/**
 	 * Build the cache from a flat list of files (as returned by a full list).
 	 * Resolves paths with memoization and bulk-loads into the cache.
+	 *
+	 * A full listing is a live enumeration, so a provider may emit the same stable id
+	 * more than once (OneDrive's `/delta` explicitly allows it). Those repeats are
+	 * collapsed last-wins here — the `bulkLoad` duplicate-id guard exists to reject
+	 * *persisted* ambiguity, not to fail a scan the provider is entitled to repeat.
 	 */
 	buildFromFiles(files: TFile[]): void {
 		const byId = new Map<string, TFile>();
@@ -246,7 +251,7 @@ export abstract class AbstractMetadataCache<TFile> {
 		const resolvedPaths = new Map<string, string>();
 		const resolvedAuthorities = new Map<string, PathAuthority>();
 		const resolved: [string, TFile][] = [];
-		for (const file of files) {
+		for (const file of byId.values()) {
 			const path = this.resolveFilePathCached(file, byId, resolvedPaths, new Set());
 			resolved.push([path, file]);
 			resolvePathAuthority(file, {
