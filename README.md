@@ -12,23 +12,25 @@ No sync server to run. Almost nothing to configure. No need to think about uploa
 
 ## What you get
 
+### Like air, present without demanding attention
+
+Air Sync reacts when something changes instead of repeatedly scanning your vault on a timer.
+
+After the initial scan, it processes only what changed — keeping your notes in step without making sync something you have to start, watch, or manage.
+
+That means less unnecessary work, data transfer, and battery use.
+
 ### Simple to set up
 
 Connect your cloud storage, choose a folder, and you're ready.
 
-### Works only when needed
-
-Air Sync reacts to changes instead of constantly polling your vault.
-
-After the initial scan, it processes only what changed — reducing unnecessary work, data transfer, and battery use.
-
 ### Fast as your vault grows
 
-Air Sync avoids repeatedly scanning or transferring your entire vault, so everyday sync stays lightweight as your notes grow.
+Everyday sync stays lightweight because Air Sync does not repeatedly scan or transfer your entire vault.
 
-### Safe when things go wrong
+### Safe through conflicts and interruptions
 
-If the same note changes on multiple devices, Air Sync attempts a 3-way merge using the last-synced version as the base.
+When the same note changes on multiple devices, Air Sync merges the edits when possible and preserves them conservatively when it cannot.
 
 If Obsidian closes, your phone locks, or the connection drops during sync, completed work is preserved and the next sync continues safely.
 
